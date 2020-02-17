@@ -4,4 +4,4 @@
 
 Current Status of detection accuracy:
 
-![Current Status](250 Epochen.png)
+![Current Status](current_status.png)
