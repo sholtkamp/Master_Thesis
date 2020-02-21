@@ -440,48 +440,36 @@ build_map <- function(prediction_tiles, columns){
 
 ```{r data_generation}
 
-#createSubsets("E:/Master_Daten/data/Layers_cropped/RED_EDGE_train.tif", c(128, 128), TRUE, "E:/Master_Daten/data/Tiles/RED_EDGE/train/", ".tif")
-
-switch(Sys.info()[['sysname']],
-       
-       Windows= {
+prepare_base_data <- function(split){
+  
+  switch(Sys.info()[['sysname']],
          
-         #Desktop
+         Windows= {
+           
+           input_data <- readInput("E:/Master_Thesis/data/train/", c(128, 128), ".tif")
+           mask_data <- readInput("E:/Master_Thesis/data/masks/", c(128, 128), ".tif")
+         },
          
-         # read input
-         train_data <- readInput("E:/Master_Daten/testing/train/", c(128, 128), ".tif")
-         mask_data <- readInput("E:/Master_Daten/testing/masks/", c(128, 128), ".tif")
-         test_data <- readInput("E:/Master_Daten/testing/test/", c(128, 128), ".tif")
-         
-         # flatten layers
-         #train_data_flat <- array_reshape(train_data, c(nrow(train_data), 128*128))
-         #mask_data_flat <- array_reshape(mask_data, c(nrow(mask_data), 128*128))
-         #test_data_flat <- array_reshape(test_data, c(nrow(test_data), 128*128))
-         
-         
-         #Laptop
-         # train_data <- readInput("C:/Masterarbeit/testing/train/", c(128, 128), ".tif")
-         # train_data <- train_data / 255
-         # train_data_flat <- array_reshape(train_data, c(nrow(train_data), 128*128))
-         # 
-         # mask_data <- readInput("C:/Masterarbeit/testing/masks/", c(128, 128), ".tif")
-         # mask_data_flat <- array_reshape(mask_data, c(nrow(mask_data), 128*128))
-         # 
-         # test_data <- readInput("C:/Masterarbeit/testing/test/", c(128, 128), ".tif")
-         # test_data <- test_data / 255
-         # test_data_flat <- array_reshape(test_data, c(nrow(test_data), 128*128))
-       },
-       
-       Linux  = {
-         
-         train_data <- readInput("/home/basti/Desktop/testing/train/", c(128, 128), ".tif")
-         mask_data <- readInput("/home/basti/Desktop/testing/masks/", c(128, 128), ".tif")
-         test_data <- readInput("/home/basti/Desktop/testing/test/", c(128, 128), ".tif")
-         
-         train_data <- train_data / 255
-         mask_data <- mask_data / 255 
-         test_data <- test_data / 255
-       })
+         Linux  = {
+           
+           input_data <- readInput("/home/basti/Daten/Master_Thesis/data/train/", c(128, 128), ".tif")
+           mask_data <- readInput("/home/basti/Daten/Master_Thesis/data/masks/", c(128, 128), ".tif")
+         })
+  
+  
+  split_point <- floor(length(input_data) * split)
+  
+  train_data <- input_data[1:split_point]
+  train_mask <- mask_data[1:split_point]
+  
+  test_data <- input_data[(split_point + 1):length(input_data)]
+  test_mask <- mask_data[(split_point + 1):length(mask_data)]
+  
+  train_data / 255
+  train_mask / 255
+  test_data / 255
+  test_mask / 255
+}   
 
 # Build tensors from data in dimensions and shape according to unet example
 tensor_train <- k_expand_dims(train_data, -1) # dim: 522, 128, 128, 1
@@ -561,6 +549,16 @@ par(mfrow=c(1,2))
 image(raster(test), main = "Test Input")
 image(raster(map), main = "Predicted Classes")
 #writeRaster(raster(map), filename = "E:/Master_Daten/testing/export.tif", overwrite = TRUE)
+```
+
+
+```{r metric}
+
+# create metric using backend tensor functions
+metric_mean_pred <- custom_metric("mean_pred", function(y_true, y_pred) {
+  k_mean(y_pred)
+})
+
 ```
 
 model %>% save_model_hdf5("/home/basti/Documents/latest_model.h5")
