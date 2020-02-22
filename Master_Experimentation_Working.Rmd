@@ -226,9 +226,11 @@ prep_data <- function(dimensions = c(128, 128), channels = 6, split = 0.8){
   # fill arrays with subsets of input data
   train_data <- tile_data[1:split_point, , , ]
   train_mask <- mask_data[1:split_point, , ,]
+  train_mask[is.na(train_mask)] <- 0
   
   test_data <- tile_data[(split_point + 1):dim(tile_data)[1], , , ]
   test_mask <- mask_data[(split_point + 1):dim(mask_data)[1], , , ]
+  test_mask[is.na(test_mask)] <- 0
   
   
   # make list of arrays to return
@@ -237,7 +239,6 @@ prep_data <- function(dimensions = c(128, 128), channels = 6, split = 0.8){
   
   return(prepped_data)
 }   
-
 
 
 #' Build a custom vgg16 and u-net hybrid Keras model
@@ -494,6 +495,8 @@ superset_results <- function(prediction_tiles, columns){
 
 ```{r data_generation}
 
+balance <- sum(data[[2]] != 0) / (dim(data[[2]])[1] * dim(data[[2]])[2] * dim(data[[2]])[3])
+balance
 # Build tensors from data in dimensions and shape according to unet example
 tensor_train <- k_expand_dims(train_data, -1) # dim: 522, 128, 128, 1
 # tensor_train[64, , , ]
