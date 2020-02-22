@@ -199,17 +199,17 @@ read_input <- function(inputdir, dimensions, channels, format){
 prep_data <- function(dimensions = c(128, 128), channels = 6, split = 0.8){
   
   # enable script to run on both Windows and Linux for testing purposes by giving differnt path formats according to OS
-  switch(Sys.info()[['sysname']],
-         
-         Windows= {
-           tile_data <- read_input("E:/Master_Thesis/data/tiles/", dimensions, channels, ".tif")
-           mask_data <- read_input("E:/Master_Thesis/data/masks/", dimensions, 1, ".tif")
-         },
-         
-         Linux  = {
-           tile_data <- read_input("/home/basti/Daten/Master_Thesis/data/tiles/", dimensions, channels, ".tif")
-           mask_data <- read_input("/home/basti/Daten/Master_Thesis/data/masks/", dimensions, 1, ".tif")
-         })
+  # switch(Sys.info()[['sysname']],
+  #        
+  #        Windows= {
+  #          tile_data <- read_input("E:/Master_Thesis/data/tiles/", dimensions, channels, ".tif")
+  #          mask_data <- read_input("E:/Master_Thesis/data/masks/", dimensions, 1, ".tif")
+  #        },
+  #        
+  #        Linux  = {
+  #          tile_data <- read_input("/home/basti/Daten/Master_Thesis/data/tiles/", dimensions, channels, ".tif")
+  #          mask_data <- read_input("/home/basti/Daten/Master_Thesis/data/masks/", dimensions, 1, ".tif")
+  #        })
   
   # determine point in input data to split between train and test data set
   split_point <- floor(dim(tile_data)[1] * split)
@@ -223,13 +223,39 @@ prep_data <- function(dimensions = c(128, 128), channels = 6, split = 0.8){
   test_mask <- array(dim = c((dim(mask_data)[1] - split_point), dimensions[1], dimensions[2], 1))
   
   
+  sample_ids <- sample(1:(dim(tile_data)[1]), split_point)
+  
+  train_index = 1
+  test_index = 1
+  print(dim(tile_data)[1])
+  
+  for(i in 1 : (dim(tile_data)[1])){
+    
+    if(i %in% sample_ids){
+      train_data[train_index, , , ] <- tile_data[i, , , ]
+      train_mask[train_index, , , ] <- mask_data[i, , , 1]
+      
+      train_index <- train_index + 1
+      print(train_index)
+    }
+    
+    else {
+      test_data[test_index, , , ] <- tile_data[i, , , ]
+      test_mask[test_index, , , ] <- mask_data[i, , , 1]
+      
+      test_index <- test_index + 1
+      print(test_index)
+    }
+    
+  }
+  
   # fill arrays with subsets of input data
-  train_data <- tile_data[1:split_point, , , ]
-  train_mask <- mask_data[1:split_point, , ,]
+  #train_data <- tile_data[1:split_point, , , ]
+  #train_mask <- mask_data[1:split_point, , ,]
   train_mask[is.na(train_mask)] <- 0
   
-  test_data <- tile_data[(split_point + 1):dim(tile_data)[1], , , ]
-  test_mask <- mask_data[(split_point + 1):dim(mask_data)[1], , , ]
+  #test_data <- tile_data[(split_point + 1):dim(tile_data)[1], , , ]
+  #test_mask <- mask_data[(split_point + 1):dim(mask_data)[1], , , ]
   test_mask[is.na(test_mask)] <- 0
   
   
@@ -495,8 +521,8 @@ superset_results <- function(prediction_tiles, columns){
 
 ```{r data_generation}
 
-balance <- sum(data[[2]] != 0) / (dim(data[[2]])[1] * dim(data[[2]])[2] * dim(data[[2]])[3])
-balance
+train_balance <- sum(data[[2]] != 0) / length(data[[2]])
+test_balance <- sum(data[[4]] != 0) / length(data[[4]])
 # Build tensors from data in dimensions and shape according to unet example
 tensor_train <- k_expand_dims(train_data, -1) # dim: 522, 128, 128, 1
 # tensor_train[64, , , ]
