@@ -1,5 +1,7 @@
 data
 qgis
+results
+data_env.RData
 .Rproj.user
 .RData
 .Rhistory

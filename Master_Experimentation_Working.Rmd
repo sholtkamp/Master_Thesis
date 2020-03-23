@@ -8,9 +8,7 @@ output: html_document
 ```{r setup, include = FALSE}
 library(keras)
 library(raster)
-```
 
-```{r aux_functions, include = FALSE}
 
 #' Create tiles as subsets of a given raster image
 #' @warning If fixed is set to TRUE parts of the input might not be made into tiles. 
@@ -27,13 +25,15 @@ library(raster)
 #' @examples \dontrun{createSubsets("C:/User/Desktop/Raster.tif", c(128, 128), TRUE, "C:/User/Desktop/Raster_Tiles/ ".tif")}
 create_subsets <- function(inputraster, targetsize, fixed = TRUE, targetdir, targetformat = ".tif"){
   
+  # read files located at the path of inputraster as a brick
   temp_rstr <- brick(inputraster)
+  
+  # read dimensions of read raster file
   targetsizeX <- targetsize[1]
   targetsizeY <- targetsize[2]
   
   # if the generation of tiles in a fixed dimension (fixed = TRUE) is not forced, tiles in a close approximation of the target size will be generated
   if (fixed == FALSE){  
-    
     # determine next number of quadrates in x and y direction, by simple rounding
     nsx <- round(ncol(temp_rstr) / targetsizeX)
     nsy <- round(nrow(temp_rstr) / targetsizeY)
@@ -51,7 +51,6 @@ create_subsets <- function(inputraster, targetsize, fixed = TRUE, targetdir, tar
   
   # if the generation of tiles in a fixed dimension (fixed = TRUE) is forced, no rounding is necessary
   if (fixed == TRUE){
-    
     # aggregate given infromation
     agg <- aggregate(temp_rstr[[1]],c(targetsizeX, targetsizeY))
     agg[] <- 1:ncell(agg)
@@ -65,14 +64,12 @@ create_subsets <- function(inputraster, targetsize, fixed = TRUE, targetdir, tar
   
   # use aggregated information from previous step to generate and write subset tiles 
   for(i in 1:ncell(agg)) {
-    
     e1  <- extent(agg_poly[agg_poly$polis==i,])
     subs <- crop(temp_rstr,e1)
     
     temp <- floor(i / (ncell(agg) / 100))
     
     if(temp %% 10 == 0 && temp > 0 && temp > progress_count){
-      
       # print progress of execution
       print(paste0("Progress: ", temp, "%"))
       progress_count <- progress_count + 10
@@ -101,7 +98,6 @@ create_subsets <- function(inputraster, targetsize, fixed = TRUE, targetdir, tar
   
   # rename files to fill gaps left by skipped tiles 
   if (fixed == TRUE){
-    
     # save current working directory and switch to targetdir to circumvent writing errors
     current_dir <- getwd()
     setwd(targetdir)
@@ -131,7 +127,7 @@ create_subsets <- function(inputraster, targetsize, fixed = TRUE, targetdir, tar
 }
 
 
-#' Read directories of input tiles into 3D array
+#' Read directories of input tiles into multidimensional arrays
 #'
 #' @param inputdir Path to the files which shall be read into array
 #' @param dimensions 2D vector of input image size. Example: c(128, 128)
@@ -144,15 +140,16 @@ read_input <- function(inputdir, dimensions, channels, format){
   
   # determine parameters of input data
   n_input <- length(list.files(inputdir, pattern = paste0(format)))
+  
+  # determine dimensions of inpout data
   input_size_x <- dimensions[1]
   input_size_y <- dimensions[2]
-  
-  percent_input <- (n_input / 100)
   
   # build array to hold data
   data <- array(dim = c(n_input, input_size_x, input_size_y, channels))
 
   # setting up progress reports
+  percent_input <- (n_input / 100)
   print("Reading data:")
   progress_count <- 0
   
@@ -167,15 +164,15 @@ read_input <- function(inputdir, dimensions, channels, format){
     
     # loop over channels to paste tile data into complete data array
     for(j in 1:channels){
+      channel_matrix <- raster::as.matrix(subset(raster_file, j))
     
-    channel_matrix <- raster::as.matrix(subset(raster_file, j))
-    
-    # paste matrix into data array
-    data[i, , , j] <- channel_matrix[ , ]
+      # paste matrix into data array
+      data[i, , , j] <- channel_matrix[ , ]
     }
     
     # print progress of execution
-    temp <- floor(i/percent_input)
+    temp <- floor(i / percent_input)
+    
     if(temp %% 10 == 0 && temp > 0 && temp > progress_count){
       print(paste0("Progress: ", temp, "%"))
       progress_count <- progress_count + 10
@@ -186,7 +183,7 @@ read_input <- function(inputdir, dimensions, channels, format){
 }
 
 
-#' Prepare data for usage by reading training data and masks, applying a training/test split to it and making it accessable via a variable
+#' Prepare data for usage by reading tiles, masks and target data , applying a training/test split to it and making it accessable via a variable
 #'
 #' @param split Numeric value between 0 and 1. Represents train/test split percentage.
 #' @param dimensions 2D vector of input image size. Example: c(128, 128).
@@ -198,18 +195,10 @@ read_input <- function(inputdir, dimensions, channels, format){
 #' @examples \dontrun{data <- prep_data(c(128, 128), 6, 0.8)}
 prep_data <- function(dimensions = c(128, 128), channels = 6, split = 0.8){
   
-  # enable script to run on both Windows and Linux for testing purposes by giving differnt path formats according to OS
-  # switch(Sys.info()[['sysname']],
-  #        
-  #        Windows= {
-  #          tile_data <- read_input("E:/Master_Thesis/data/tiles/", dimensions, channels, ".tif")
-  #          mask_data <- read_input("E:/Master_Thesis/data/masks/", dimensions, 1, ".tif")
-  #        },
-  #        
-  #        Linux  = {
-  #          tile_data <- read_input("/home/basti/Daten/Master_Thesis/data/tiles/", dimensions, channels, ".tif")
-  #          mask_data <- read_input("/home/basti/Daten/Master_Thesis/data/masks/", dimensions, 1, ".tif")
-  #        })
+  tile_data <- read_input("F:/Master_Thesis/data/tiles/", dimensions, channels, ".tif")
+  mask_data <- read_input("F:/Master_Thesis/data/masks/", dimensions, 1, ".tif")
+  target_data <- read_input("F:/Master_Thesis/data/targets/tiles/", dimensions, channels, ".tif")
+
   
   # determine point in input data to split between train and test data set
   split_point <- floor(dim(tile_data)[1] * split)
@@ -223,44 +212,43 @@ prep_data <- function(dimensions = c(128, 128), channels = 6, split = 0.8){
   test_mask <- array(dim = c((dim(mask_data)[1] - split_point), dimensions[1], dimensions[2], 1))
   
   
+  # make traceable sample selection by sampling ids and building a vector from them
   sample_ids <- sample(1:(dim(tile_data)[1]), split_point)
   
+  
+  # initiate indices
   train_index = 1
   test_index = 1
-  print(dim(tile_data)[1])
   
+  # loop over whole data and split tiles and masks into train and test data sets according to sampled ids
   for(i in 1 : (dim(tile_data)[1])){
     
     if(i %in% sample_ids){
+      # case: id is a sampled id --> point of data belongs into training set
       train_data[train_index, , , ] <- tile_data[i, , , ]
       train_mask[train_index, , , ] <- mask_data[i, , , 1]
       
       train_index <- train_index + 1
-      print(train_index)
     }
     
     else {
+      # case: id is not a sampled id --> point of data belongs to test set
       test_data[test_index, , , ] <- tile_data[i, , , ]
       test_mask[test_index, , , ] <- mask_data[i, , , 1]
       
       test_index <- test_index + 1
-      print(test_index)
     }
     
   }
   
-  # fill arrays with subsets of input data
-  #train_data <- tile_data[1:split_point, , , ]
-  #train_mask <- mask_data[1:split_point, , ,]
+
+  # replace NAs in mask data with 0
   train_mask[is.na(train_mask)] <- 0
-  
-  #test_data <- tile_data[(split_point + 1):dim(tile_data)[1], , , ]
-  #test_mask <- mask_data[(split_point + 1):dim(mask_data)[1], , , ]
   test_mask[is.na(test_mask)] <- 0
   
   
   # make list of arrays to return
-  prepped_data <- list("train_data" = train_data, "train_mask" = train_mask, "test_data" = test_data, "test_mask" = test_mask)
+  prepped_data <- list("train_data" = train_data, "train_mask" = train_mask, "test_data" = test_data, "test_mask" = test_mask, "target_data" = target_data)
   
   
   return(prepped_data)
@@ -275,7 +263,7 @@ prep_data <- function(dimensions = c(128, 128), channels = 6, split = 0.8){
 #' @return Returns a Keras model
 #'
 #' @examples \dontrun{model <- build_vgg_unet()}
-build_model <- function(input_shape = c(128, 128, 1), num_classes = 2) {
+build_custom_model <- function(input_shape = c(128, 128, 1), num_classes = 2) {
   
   
   #---Input-------------------------------------------------------------------------------------
@@ -409,6 +397,151 @@ build_model <- function(input_shape = c(128, 128, 1), num_classes = 2) {
 }
 
 
+#' Title
+#'
+#' @param input_shape 
+#' @param num_classes 
+#'
+#' @source Based on the work on the keras vigniette found at https://github.com/rstudio/keras/blob/master/vignettes/examples/unet.R
+#'
+#' @return
+#' @export
+#'
+#' @examples
+build_unet_model <- function(input_shape = c(128, 128, 1), num_classes = 2){
+  
+  #---Input-------------------------------------------------------------------------------------
+  inputs <- layer_input(name = "input_1", shape = input_shape)
+  
+  
+  #---Downsampling------------------------------------------------------------------------------
+  down1 <- inputs %>%
+        layer_conv_2d(filters = 64, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 64, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") 
+    down1_pool <- down1 %>%
+        layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
+    
+    
+   down2 <- down1_pool %>%
+        layer_conv_2d(filters = 128, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 128, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") 
+    down2_pool <- down2 %>%
+        layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
+    
+    
+    down3 <- down2_pool %>%
+        layer_conv_2d(filters = 256, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 256, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") 
+    down3_pool <- down3 %>%
+        layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
+
+    
+    down4 <- down3_pool %>%
+        layer_conv_2d(filters = 512, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 512, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") 
+    down4_pool <- down4 %>%
+        layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
+    
+  #---Center-----------------------------------------------------------------------------------
+    center <- down4_pool %>%
+        layer_conv_2d(filters = 1024, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 1024, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") 
+  
+  #---Upsampling--------------------------------------------------------------------------------
+   up4 <- center %>%
+        layer_upsampling_2d(size = c(2, 2)) %>%
+        {layer_concatenate(inputs = list(down4, .), axis = 3)} %>%
+        layer_conv_2d(filters = 512, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 512, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 512, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu")
+    
+    up3 <- up4 %>%
+        layer_upsampling_2d(size = c(2, 2)) %>%
+        {layer_concatenate(inputs = list(down3, .), axis = 3)} %>%
+        layer_conv_2d(filters = 256, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 256, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 256, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu")
+    
+    up2 <- up3 %>%
+        layer_upsampling_2d(size = c(2, 2)) %>%
+        {layer_concatenate(inputs = list(down2, .), axis = 3)} %>%
+        layer_conv_2d(filters = 128, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 128, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 128, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu")
+    
+    up1 <- up2 %>%
+        layer_upsampling_2d(size = c(2, 2)) %>%
+        {layer_concatenate(inputs = list(down1, .), axis = 3)} %>%
+        layer_conv_2d(filters = 64, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 64, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu") %>%
+        layer_conv_2d(filters = 64, kernel_size = c(3, 3), padding = "same") %>%
+        layer_batch_normalization() %>%
+        layer_activation("relu")
+  
+ #---Classification/Output---------------------------------------------------------------------
+  classify <- layer_conv_2d(up1, filters = num_classes, kernel_size = c(1, 1), activation = "sigmoid")
+  
+  
+  # Build specified model and assign it to variable
+  model <- keras_model(
+    inputs = inputs,
+    outputs = classify
+  )
+  
+  # Compile model
+  model %>% compile(
+    loss = "binary_crossentropy",
+    optimizer = optimizer_sgd(lr = 2e-4),
+    metrics = c("accuracy")
+  )
+  
+  
+  return(model)
+}
+  
+
 #' Threshold predicition probabilities to make class predictions
 #'
 #' @param threshold Value used as threshold to determine class. Value needs to be between 0.0 and 1.0. Reflects needed class probability for a pixel to be considered either class.
@@ -421,7 +554,7 @@ build_model <- function(input_shape = c(128, 128, 1), num_classes = 2) {
 threshold_results <- function(predictions, threshold){
   
   # initiate array to fill with thresholded class values
-  results <- array(dim = c(dim(predicitons)[1], dim(predicitons)[2], dim(predicitons)[3]))
+  results <- array(dim = c(dim(predictions)[1], dim(predictions)[2], dim(predictions)[3]))
   
   # for each tile in predicitions
   for (i in 1:dim(predictions)[1]) {
@@ -523,21 +656,22 @@ superset_results <- function(prediction_tiles, columns){
 
 train_balance <- sum(data[[2]] != 0) / length(data[[2]])
 test_balance <- sum(data[[4]] != 0) / length(data[[4]])
-# Build tensors from data in dimensions and shape according to unet example
-tensor_train <- k_expand_dims(train_data, -1) # dim: 522, 128, 128, 1
-# tensor_train[64, , , ]
-#mask_data <- +(!mask_data)
-tensor_mask <- k_constant(to_categorical(mask_data, num_classes = 2)) # dim: 522, 128, 128, 1
-#tensor_mask[64, , , 1])
 
-tensor_test <- k_expand_dims(test_data, -1) # dim: 522, 128, 128, 1
-# tensor_test[64, , , ]
+# Build tensors 
+tf_train_tiles <- k_constant(data[[1]][ , , , 1:3])
+tf_train_masks <- k_constant(to_categorical(data[[2]], num_classes = 2))
+
+tf_test_tiles <- k_constant(data[[3]][ , , , 1:3])
+tf_test_masks <- k_constant(to_categorical(data[[4]], num_classes = 2))
+
+
+tf_target_tiles <- k_constant(data[[5]][ , , , 1:3])
 ```
 
 ```{r}
 
-model <- build_vgg_unet()
-#summary(model)
+model <- build_unet_model(input_shape = c(128, 128, 3), num_classes = 2)
+
 
 image_datagen <- image_data_generator(
   rotation_range = 180,
@@ -551,58 +685,36 @@ image_datagen <- image_data_generator(
 history <- model %>% 
   fit_generator(
     epochs = 250,
-    steps_per_epoch = 522 / 32,
-    #callbacks = callback_early_stopping(monitor = "val_loss", min_delta = 0.01, patience = 5),
+    steps_per_epoch = dim(data[[1]])[1] / 32,
     
     generator = flow_images_from_data(
-      tensor_train, 
-      tensor_mask,
+      tf_train_tiles, 
+      tf_train_masks,
       image_datagen,
       subset = "training"),
     
     validation_data = flow_images_from_data(
-      tensor_train, 
-      tensor_mask,
+      tf_train_tiles, 
+      tf_train_masks,
       image_datagen,
       subset = "validation")
   )
 
 
-#model %>% evaluate(tensor_train, tensor_mask)
+model %>% evaluate(tf_test_tiles, tf_test_masks)
 
-predictions <- model %>% predict(tensor_test)
-#predictions[55, , , 1]
+predictions <- model %>% predict(tf_target_tiles)
 
-results <- parse_results(model, tensor_test, 0.95)
-plot(raster(results[55, , ]), main = "pred, threshold")
-```
+results <- threshold_results(predictions, 0.85)
 
-par(mfrow=c(2,2))
-plot(raster(test_data[55, , ]), main = "test input")
-plot(raster(predictions[55, , , 1]), main = "prediction")
-plot(raster(results[55, , ]), main = "pred, threshold")
+map <- superset_results(results, 10)
+test <- superset_results(data[[5]][, , , 1], 10)
 
-
-results <- parse_results(model, tensor_test, 0.99)
-
-image(raster(results[55, , ]))
-
-# 17x8 image, 55 good place
-image(raster(test_data[67, ,]))
-
-```{r}
-
-
-
-map <- build_map(results[ , , ], 17)
-test <- build_map(test_data[ , , ], 17)
 
 par(mfrow=c(1,2))
-image(raster(test), main = "Test Input")
+image(raster(test), main = "Input: RGB, R shown")
 image(raster(map), main = "Predicted Classes")
-#writeRaster(raster(map), filename = "E:/Master_Daten/testing/export.tif", overwrite = TRUE)
 ```
-
 
 ```{r metric}
 
