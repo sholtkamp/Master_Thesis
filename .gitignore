@@ -1,6 +1,7 @@
 data
 qgis
 results
+env
 data_env.RData
 .Rproj.user
 .RData
