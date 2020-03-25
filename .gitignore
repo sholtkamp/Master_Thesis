@@ -2,6 +2,7 @@ data
 qgis
 results
 env
+trained_models
 data_env.RData
 .Rproj.user
 .RData

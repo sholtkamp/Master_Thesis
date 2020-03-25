@@ -214,7 +214,7 @@ add_ndvi <- function(data){
   
   temp_tiles <- array(dim = c(dim(data)[1], dim(data)[2], 
                               dim(data)[3], (dim(data)[4] + 1)))
-  
+
   
   for(i in 1:dim(temp_tiles)[1]){
     for(j in 1:dim(temp_tiles)[2]){
@@ -231,22 +231,28 @@ add_ndvi <- function(data){
       }
     }
   }
+
+  temp_tiles[is.na(temp_tiles[ , , , 7])] <- 0
+  
   
   return(temp_tiles)
 }
 
 
 prep_data <- function(){
+  
   data <- read_data()
   
-  data <- balance_data("image", data, 0.5)
+  #data <- balance_data("image", data, 0.5)
   
   data <- split_data(data, 0.8)
   
+  cat("\nCalculating NDVI\n")
   data[[1]] <- add_ndvi(data[[1]])
   data[[3]] <- add_ndvi(data[[3]])
   data[[5]] <- add_ndvi(data[[5]])
-
+  print("NDVI calculated and added to data")
+  
   return(data)
 }
 
@@ -267,6 +273,8 @@ balance_data <- function(paradigm = "pixel", data, aim){
   tile_data <- data[[1]]
   mask_data <- data[[2]]
   target_data <- data[[3]]
+  
+ cat("\nBalancing data\n")
   
   # if paradigm is selected as pixel, the data set will be balanced on basis of pixels and their class affiliation
   if(paradigm == "pixel"){
@@ -369,7 +377,9 @@ balance_data <- function(paradigm = "pixel", data, aim){
     }
   }
   
-    # make list of arrays to return
+  print("Data balanced")
+  
+  # make list of arrays to return
   balanced_data <- list("tile_data" = tile_data, "mask_data" = mask_data, "target_data" = target_data)
   
   return(balanced_data)
@@ -386,6 +396,8 @@ balance_data <- function(paradigm = "pixel", data, aim){
 #'
 #' @examples
 split_data <- function(data, split = 0.8){
+  
+  cat("\nSplitting data\n")
   
   tile_data <- data[[1]]
   mask_data <- data[[2]]
@@ -444,6 +456,8 @@ split_data <- function(data, split = 0.8){
   split_data <- list("train_data" = train_data, "train_mask" = train_mask, 
                      "test_data" = test_data, "test_mask" = test_mask, 
                      "target_data" = target_data)
+  
+  print("Data split")
   
   return(split_data)
 }
@@ -583,7 +597,7 @@ build_custom_model <- function(input_shape = c(128, 128, 1), num_classes = 2) {
   # Compile model
   model %>% compile(
     loss = "binary_crossentropy",
-    optimizer = optimizer_sgd(lr = 2e-4),
+    optimizer = optimizer_sgd(lr = 0.001),
     metrics = c("accuracy")
   )
   
@@ -852,19 +866,26 @@ superset_results <- function(prediction_tiles, columns){
 
 ```{r data_generation}
 # Build tensors 
-tf_train_tiles <- k_constant(data[[1]][ , , , c(4, 2, 3)])
+tf_train_tiles <- k_constant(data[[1]][ , , , c(4,5,7)])
+data[[2]] <- +(!data[[2]])
 tf_train_masks <- k_constant(to_categorical(data[[2]], num_classes = 2))
 
-tf_test_tiles <- k_constant(data[[3]][ , , , c(4, 2, 3)])
+tf_test_tiles <- k_constant(data[[3]][ , , , c(4,5,7)])
+data[[4]] <- +(!data[[4]])
 tf_test_masks <- k_constant(to_categorical(data[[4]], num_classes = 2))
 
+tf_target_tiles <- k_constant(data[[5]][ , , , c(4,5,7)])
 
-tf_target_tiles <- k_constant(data[[5]][ , , , c(4, 2, 3)])
+
+
+tf_train_tiles <- k_expand_dims(data[[1]][ , , , 7], -1)
+tf_test_tiles <- k_expand_dims(data[[3]][ , , , 7], -1)
+tf_target_tiles <- k_expand_dims(data[[5]][ , , , 7], -1)
 ```
 
 ```{r}
 
-model <- build_unet_model(input_shape = c(128, 128, 3), num_classes = 2)
+model <- build_custom_model(input_shape = c(128, 128, 3), num_classes = 2)
 
 image_datagen <- image_data_generator(
   rotation_range = 180,
@@ -898,15 +919,16 @@ model %>% evaluate(tf_test_tiles, tf_test_masks)
 
 predictions <- model %>% predict(tf_target_tiles)
 
-results <- threshold_results(predictions, 0.90)
-
+results <- threshold_results(predictions, 0.85)
 map <- superset_results(results, 10)
-ndvi <- superset_results(ndvi[ , , , ], 10)
-test <- superset_results(data[[5]][, , , 4], 10)
+image(raster(map), main = "Predicted Classes")
+
+
+test <- superset_results(data[[5]][, , , 7], 10)
 
 
 par(mfrow=c(1,2))
-image(raster(test), main = "Input: NIR,RE, NIR shown")
+image(raster(test), main = "Input: NIR, RE, NDVI, NDVI shown")
 image(raster(map), main = "Predicted Classes")
 ```
 
@@ -920,7 +942,7 @@ metric_mean_pred <- custom_metric("mean_pred", function(y_true, y_pred) {
 
 ```
 
-model %>% save_model_hdf5("/home/basti/Documents/latest_model.h5")
+model %>% save_model_hdf5("F:/Master_Thesis/model_custom.h5")
 ```
 
 Notes:   
