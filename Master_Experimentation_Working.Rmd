@@ -462,6 +462,19 @@ split_data <- function(data, split = 0.8){
   return(split_data)
 }
 
+dice <- custom_metric("dice", function(y_true, y_pred, smooth = 1.0) {
+  y_true_f <- k_flatten(y_true)
+  y_pred_f <- k_flatten(y_pred)
+  intersection <- k_sum(y_true_f * y_pred_f)
+  (2 * intersection + smooth) / (k_sum(y_true_f) + k_sum(y_pred_f) + smooth)
+})
+
+bce_dice_loss <- function(y_true, y_pred) {
+    result <- loss_binary_crossentropy(y_true, y_pred) +
+        (1 - dice(y_true, y_pred))
+    return(result)
+}
+
 
 #' Build a custom vgg16 and u-net hybrid Keras model
 #'
@@ -596,10 +609,11 @@ build_custom_model <- function(input_shape = c(128, 128, 1), num_classes = 2) {
   
   # Compile model
   model %>% compile(
-    loss = "binary_crossentropy",
+    loss = bce_dice_loss,
     optimizer = optimizer_sgd(lr = 0.001),
-    metrics = c("accuracy")
+    metrics = dice
   )
+
   
   return(model)
 }
@@ -740,9 +754,9 @@ build_unet_model <- function(input_shape = c(128, 128, 1), num_classes = 2){
   
   # Compile model
   model %>% compile(
-    loss = "binary_crossentropy",
+    loss = bce_dice_loss,
     optimizer = optimizer_rmsprop(lr = 1e-5),
-    metrics = c("accuracy")
+    metrics = list(dice, metric_binary_accuracy)
   )
   
   
@@ -862,16 +876,17 @@ superset_results <- function(prediction_tiles, columns){
 
 
 
+
 ```
 
 ```{r data_generation}
 # Build tensors 
 tf_train_tiles <- k_constant(data[[1]][ , , , c(4,5,7)])
-data[[2]] <- +(!data[[2]])
+#data[[2]] <- +(!data[[2]])
 tf_train_masks <- k_constant(to_categorical(data[[2]], num_classes = 2))
 
 tf_test_tiles <- k_constant(data[[3]][ , , , c(4,5,7)])
-data[[4]] <- +(!data[[4]])
+#data[[4]] <- +(!data[[4]])
 tf_test_masks <- k_constant(to_categorical(data[[4]], num_classes = 2))
 
 tf_target_tiles <- k_constant(data[[5]][ , , , c(4,5,7)])
@@ -886,6 +901,7 @@ tf_target_tiles <- k_expand_dims(data[[5]][ , , , 7], -1)
 ```{r}
 
 model <- build_custom_model(input_shape = c(128, 128, 3), num_classes = 2)
+#unet_model <- build_unet_model(input_shape = c(128, 128, 3), num_classes = 2)
 
 image_datagen <- image_data_generator(
   rotation_range = 180,
@@ -896,7 +912,7 @@ image_datagen <- image_data_generator(
   validation_split = 0.2
 )
 
-history <- model %>% 
+history <- custom_model %>% 
   fit_generator(
     epochs = 25,
     steps_per_epoch = dim(data[[1]])[1] / 32,
@@ -919,7 +935,7 @@ model %>% evaluate(tf_test_tiles, tf_test_masks)
 
 predictions <- model %>% predict(tf_target_tiles)
 
-results <- threshold_results(predictions, 0.85)
+results <- threshold_results(predictions, 0.57)
 map <- superset_results(results, 10)
 image(raster(map), main = "Predicted Classes")
 
@@ -934,11 +950,18 @@ image(raster(map), main = "Predicted Classes")
 
 ```{r metric}
 
-# create metric using backend tensor functions
-metric_mean_pred <- custom_metric("mean_pred", function(y_true, y_pred) {
-  k_mean(y_pred)
+dice <- custom_metric("dice", function(y_true, y_pred, smooth = 1.0) {
+  y_true_f <- k_flatten(y_true)
+  y_pred_f <- k_flatten(y_pred)
+  intersection <- k_sum(y_true_f * y_pred_f)
+  (2 * intersection + smooth) / (k_sum(y_true_f) + k_sum(y_pred_f) + smooth)
 })
 
+bce_dice_loss <- function(y_true, y_pred) {
+    result <- loss_binary_crossentropy(y_true, y_pred) +
+        (1 - dice(y_true, y_pred))
+    return(result)
+}
 
 ```
 
