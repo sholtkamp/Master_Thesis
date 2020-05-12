@@ -1,0 +1,169 @@
+---
+author: "Sebastian Holtkamp"
+date: "05.02.2020"
+title: "Master_Thesis_Experimentation"
+output: html_document
+---
+  
+```{r setup, include = FALSE}
+library(keras)
+library(abind)
+library(raster)
+```
+
+```{r prepare_data, include = TRUE}
+
+# load tile data
+#data <- load_data()
+load("F:/deepdrone/data.RData")
+
+# add NDVI to data 
+#data[[1]] <- add_ndvi(data[[1]], 1, 4)
+
+# balance dataset if desired
+# pixel_balanced_data <- balance_data("pixel", data, 0.5)
+# image_balanced_data <- balance_data("image", data, 0.5)
+
+# Build tensors of data
+tensors <- tensorize_data(data, c(4, 5, 6), c(1, 316, 328, 581, 617, 632, 712))
+
+# organize tensors as lists
+tile_tensors <- tensors[[1]]
+mask_tensors <- tensors[[2]]
+rm(tensors)
+```
+
+```{r prepare_dice, include = TRUE}
+#Based on the implementation showcased at https://blogs.rstudio.com/tensorflow/posts/2019-08-23-unet/
+
+#define dice metric
+dice <- keras::custom_metric("dice", function(y_true, y_pred, smooth = 1.0) {
+  
+  # flatten ground truth and prediction tensors into 1D tensors
+  y_true_f <- k_flatten(y_true)
+  y_pred_f <- k_flatten(y_pred)
+  
+  intersection <- k_sum(y_true_f * y_pred_f)
+  
+  # calculate Dice coefficient
+  (2 * intersection + smooth) / (k_sum(y_true_f) + k_sum(y_pred_f) + smooth)
+})
+
+# define dice loss
+bce_dice_loss <- function(y_true, y_pred) {
+  
+  # calculate loss
+  result <- loss_binary_crossentropy(y_true, y_pred) + (1 - dice(y_true, y_pred))
+  
+  return(result)
+}
+```
+
+```{r prepare_model_training, include = TRUE}
+
+# define model
+model <- build_unet_model(c(128, 128, 3), 2)
+
+# compile model
+model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = optimizer_sgd(lr = 0.001),
+  metrics = list(dice, metric_binary_accuracy)
+)
+
+# define image data generator
+image_datagen <- image_data_generator(
+  rotation_range = 180,
+  width_shift_range = 0.2,
+  height_shift_range = 0.2,
+  horizontal_flip = TRUE,
+  vertical_flip = TRUE,
+  #validation_split = 0.2
+)
+```
+
+```{r train_models}
+
+# initiate lists to hold results for crossvalidated training
+models <- list()
+histories <- list()
+evaluations <- list()
+
+# train a model for each area in data, leaving it out of training and using it for validation
+for(i in 1:2){
+  
+  # concatenate tiles and masks of training areas, leaving out test area
+  these.tiles <- k_concatenate(tile_tensors[c(-i)], 1)
+  these.masks <- k_concatenate(mask_tensors[c(-i)], 1)
+  
+  # copy model
+  this.model <- model
+  
+  # fit copied model to selected training data
+  this.history <- this.model %>%
+    fit_generator(
+      epochs = 10,
+      steps_per_epoch = dim(data[[1]])[1] / 16,
+
+      generator = flow_images_from_data(
+        batch_size = 16,
+        these.tiles,
+        these.masks,
+        image_datagen
+        #subset = "training"
+        ),
+
+      validation_data = flow_images_from_data(
+        batch_size = 16,
+        tile_tensors[[i]],
+        mask_tensors[[i]],
+        image_datagen
+        #subset = "validation"
+        )
+    )
+  
+  # evaluate trained model
+  this.evaluation = evaluate(this.model, tile_tensors[[i]], mask_tensors[[i]])
+
+  # save model, history and evaluation of this iteration
+  models[[paste0("area_", i)]] <- this.model
+  histories[[paste0("area_", i)]] <- this.history
+  evaluations[[paste0("area_", i)]] <- this.evaluation
+}
+```
+
+res = evaluate(model, tiles_area_3, masks_area_3, batch_size = 16)
+model %>% evaluate(tf_test_tiles, tf_test_masks)
+
+predictions <- model %>% predict(tf_target_tiles)
+
+results <- threshold_results(predictions, 0.57)
+map <- superset_results(results, 10)
+image(raster(map), main = "Predicted Classes")
+
+
+test <- superset_results(data[[5]][, , , 7], 10)
+
+
+par(mfrow=c(1,2))
+image(raster(test), main = "Input: NIR, RE, NDVI, NDVI shown")
+image(raster(map), main = "Predicted Classes")
+```
+
+model %>% save_model_hdf5("F:/Master_Thesis/model_custom.h5")
+```
+
+Notes:   
+  # SGD, 4, 250 epochs, 15 steps, loss 0,18, acc 94.5
+  # SGD, 5, ", ", loss 0.39, vaL_loss 0.42, acc 93.5 --> LR too low
+  
+  # ADAM 4 too fast
+  # ADAM, 5, 250 epochs, 15 step, loss 0.188, val_loss 0.38, acc 94.5 --> overfit, result not good
+  
+  # ADAGRAD, 250, 15, l 0.15, vl 0.29, acc 94.5
+
+
+# invert msak:
+
+#data[[2]] <- +(!data[[2]])
+#data[[4]] <- +(!data[[4]])
