@@ -7,8 +7,8 @@
 #' @return
 #' @export
 #'
-#' @examples \dontrun{tensors <- tensorize_data(data, c(4, 5, 6), c(1, 316, 328, 581, 617, 632, 712))}
-tensorize_data <- function(input = data, bands = c(4, 5, 6), leading_ids = c(1, 316, 328, 581, 617, 632, 712)){
+#' @examples \dontrun{tensors <- tensorize_data(data, c(4, 5, 6), c(1, 316, 328, 581, 617, 632))}
+tensorize_data <- function(input = data, bands = c(4, 5, 6), leading_ids = c(1, 316, 328, 581, 617, 632)){
 
   # initiate lists to organize tensors and masks
   tile_tensors <- list()
@@ -26,7 +26,7 @@ tensorize_data <- function(input = data, bands = c(4, 5, 6), leading_ids = c(1, 
     tile_tensors[[paste0("tiles_area_", i)]] <- tile_tensor
 
     # build tensor of masks
-    mask_tensor <- k_constant(to_categorical(input[[2]][lead:tail, , , ], num_classes = 2))
+    mask_tensor <- k_constant(to_categorical(input[[2]][lead:tail, , ], num_classes = 2))
     mask_tensors[[paste0("masks_area_", i)]] <- mask_tensor
   }
 

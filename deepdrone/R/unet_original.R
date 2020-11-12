@@ -55,7 +55,7 @@ build_unet_original <- function(input_shape = c(128, 128, 3), num_classes = 2){
   
   #---Center-----------------------------------------------------------------------------------
   center <- down4_pool %>%
-    layer_dropout(rate = 0.8) %>%
+    layer_dropout(rate = 0.5) %>%
     layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "center_1", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "center_2", padding = "same") %>%
