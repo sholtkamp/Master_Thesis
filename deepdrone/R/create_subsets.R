@@ -11,7 +11,7 @@
 #' @param targetdir String. Path to directory in which the results will be stored.
 #' @param targetformat String. File format for output. Format needs to be supported by raster library.
 #'
-#' @examples \dontrun{createSubsets("C:/User/Desktop/Raster.tif", c(128, 128), TRUE, "C:/User/Desktop/Raster_Tiles/ ".tif")}
+#' @examples \dontrun{create_subsets("C:/User/Desktop/Raster.tif", c(128, 128), TRUE, "C:/User/Desktop/Raster_Tiles/", .tif")}
 create_subsets <- function(inputraster, targetsize, fixed = TRUE, targetdir, targetformat = ".tif"){
 
   # read files located at the path of inputraster as a brick

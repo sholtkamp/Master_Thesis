@@ -106,3 +106,57 @@ superset_results <- function(prediction_tiles, columns){
 
   return(map_array)
 }
+
+
+select_models <- function(models, evaluations){
+  
+  high_dice <- 0
+  high_id <- 0
+  
+  low_dice <- 1
+  low_id <- 0
+  
+  
+  for(i in 1:length(models))
+    if(high_dice < evaluations[[i]]$dice){
+      high_dice <- evaluations[[i]]$dice
+      high_id <- i
+    }
+  if(low_dice > evaluations[[i]]$dice){
+    low_dice <- evaluations[[i]]$dice
+    low_id <- i
+  }
+  
+  best_model <- models[[high_id]]
+  worst_model <- models[[low_id]]
+  
+  
+  return(list("best_model" = best_model, "worst_model" = worst_model))
+}
+
+raster_maps <- function(data, map){
+  map_raster <- raster(map)
+  map_raster@extent <- data[[4]]
+  map_raster@crs <- data[[5]]
+  map_raster <- projectRaster(from = map_raster, crs = "+proj=longlat +datum=WGS84 +no_defs")
+  
+  return(map_raster)
+}
+
+
+filter_results_binary <- function(map_class_1, map_class_2){
+  for (i in 1:dim(map_class_1)[1]){
+    for (j in 1:dim(map_class_1)[2]){
+      if(map_class_1[i, j] < map_class_2[i, j]){
+        map_class_1[i, j] <- 0
+      }
+      else {
+        map_class_1[i, j] <- 1
+      }
+    }
+  }
+  
+  return(map_class_1)
+}
+
+

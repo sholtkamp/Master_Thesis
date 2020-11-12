@@ -1,10 +1,9 @@
 data
-qgis
-results
-env
 trained_models
-data_env.RData
-.Rproj.user
-.RData
+deepdrone.Rcheck
+deepdrone/.Rproj.user
 .Rhistory
-inst
+deepdrone/man/
+images
+results/
+sources/

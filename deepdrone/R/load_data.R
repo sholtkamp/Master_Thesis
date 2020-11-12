@@ -12,7 +12,7 @@ read_raster <- function(inputdir, dimensions, channels, format){
   # determine parameters of input data
   n_input <- length(list.files(inputdir, pattern = paste0(format)))
 
-  # determine dimensions of inpout data
+  # determine dimensions of input data
   input_size_x <- dimensions[1]
   input_size_y <- dimensions[2]
 
@@ -67,7 +67,8 @@ read_raster <- function(inputdir, dimensions, channels, format){
 #' @examples \dontrun{data <- prep_data(c(128, 128), 6)}
 load_data <- function(tile_path = "F:/Master_Thesis/data/tiles/",
                       mask_path = "F:/Master_Thesis/data/masks/",
-                      dimensions = c(128, 128), channels = 6){
+                      dimensions = c(128, 128), 
+                      channels = 6){
 
   # read raster data
   tile_data <- read_raster(tile_path, dimensions, channels, ".tif")

@@ -7,8 +7,8 @@
 #' @return Returns array with added NDVI dimension.
 #' @export
 #'
-#' @examples \dontrun{data_ndvi <- add_ndvi(data, 1, 4)}
-add_ndvi <- function(data, red_band = 1, nir_band = 4){
+#' @examples \dontrun{data_ndvi <- add_ndvi(data, 1, 3)}
+add_ndvi <- function(data, red_band, nir_band){
 
   cat("\n")
   print("Calculating NDVI:")
