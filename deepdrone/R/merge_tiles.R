@@ -2,11 +2,12 @@
 #'
 #' @param prediction_tiles (thresholded) Output of a prediciton made using the Keras model
 #' @param columns Number of columns/tiles on x-axis. Used to break rows of input tiles
+#' @param overlap Boolean. If TRUE some resolution will be lost to remove border effects. Not recommended for use in GIS pipeline
 #'
 #' @return 2D array of predicted class values
 #' @export
 #'
-#' @examples \dontrun{result_map <- merge_tiles(test_data[ , , ], 17)}
+#' @examples \dontrun{result_map <- merge_tiles(test_data[ , , ], 17, TRUE)}
 merge_tiles <- function(prediction_tiles, columns, overlap){
   
   # determine tile resolution of map from input
@@ -56,25 +57,27 @@ merge_tiles <- function(prediction_tiles, columns, overlap){
     }
   }
   
+  # overlap tiles
   if(overlap == TRUE){
     
+  # define columns to drop to remove border effects, 5 pixel wide column
   y_drops <- seq(from = dim(prediction_tiles)[2], to = dim(map_array)[1] - (1 * dim(prediction_tiles)[2]), by = dim(prediction_tiles)[2])
   y_drops_l <- y_drops - 1
   y_drops_r <- y_drops + 1
   y_drops_l2 <- y_drops - 2
   y_drops_r2 <- y_drops + 2
   
+  # define rows to drop to remove border effects, 5 pixel wide row
   x_drops <- seq(from = dim(prediction_tiles)[2], to = dim(map_array)[2] - (1 * dim(prediction_tiles)[2]), by = dim(prediction_tiles)[2])
   x_drops_l <- x_drops - 1
   x_drops_r <- x_drops + 1
   x_drops_l2 <- x_drops - 2
   x_drops_r2 <- x_drops + 2
   
+  # drop selected rows and columns
   map_array <- map_array[-c(y_drops, y_drops_l, y_drops_r, y_drops_l2, y_drops_r2),
                          -c(x_drops, x_drops_l, x_drops_r, x_drops_l2, x_drops_r2)]
   }
-  
-  
   
   return(map_array)
 }

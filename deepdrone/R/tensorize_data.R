@@ -4,7 +4,7 @@
 #' @param bands Integer vector. Spectral bands the tensors will incorporate.
 #' @param leading_ids Integer vector. IDs signifying new areas of interest. Needs to start with 1 and end with number of tiles + 1.
 #'
-#' @return
+#' @return List. Tensors created
 #' @export
 #'
 #' @examples \dontrun{tensors <- tensorize_data(data, c(4, 5, 6), c(1, 316, 328, 581, 617, 632))}

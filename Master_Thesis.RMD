@@ -12,6 +12,7 @@ library(raster)
 library(deepdrone)
 library(RColorBrewer)
 
+#---------------------------------------------------------------------------------------------------------------
 
 ####################
 ##### SETTINGS #####
@@ -25,37 +26,36 @@ cols2 <- rev(brewer.pal(5, "RdYlGn"))
 # channels <- c(1, 2, 3) # --> Blue Green Red
 channels <- c(2, 4, 5) # --> Green NIR RedEdge
 
+# save leading IDs of areas for tensor building
+tile_leads <- c(1, 316, 328, 581, 617, 632)
+mask_leads <- c(1, 81)
+
+# attributes of target area to build referenced raster
+target_crs_pre <- crs("+proj=utm +zone=32 +datum=WGS84 +init=EPSG:32632 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0")
+target_crs_post <- crs = "+proj=longlat +datum=WGS84 +no_defs +zone=32 +init=EPSG:32632"
+target_extent <- extent(480321.8, 480396.5, 5796794, 5796879)
+
 # define base directory and project name used for folders and result file organisation
 base_dir <- "C:/Users/Basti/Desktop/"
-project_name <- "geheim"
+model_name <- "model"
+project_name <- "test"
 dir.create(paste0(base_dir, project_name))
 
-# Make Keras backend accessible
+#---------------------------------------------------------------------------------------------------------------
+
+#######################
+##### SETUP: DATA #####
+#######################
+
+# make Keras backend accessible
 K <- backend()
 
-
-
-
-
-# ----- Prepare Data ------------------------------------------------------------------------------------------
-# load tile data
-data <- load_project_data(tile_path = "F:/Master_Thesis/data/tiles/",
-                          mask_path = "F:/Master_Thesis/data/masks/",
-                          dimensions = c(128, 128), ch_t = 6, ch_m = 1, ".tif")
-
-# add NDVI to data 
-# data[[1]] <- add_ndvi(data[[1]], 3, 4) # add NDVI to training area data
-# data[[3]] <- add_ndvi(data[[3]], 3, 4) # add NDVI to test area data
-
-# balance dataset if desired
-# pixel_balanced_data <- balance_data("pixel", data, 0.5)
-# image_balanced_data <- balance_data("image", data[[1]], data[[2]], 0.5)
-
-# Build tensors of data
+# load data
 load("F:/Master_Thesis/data/split_data.RData")
 
-train_tensors <- tensorize_data(data, channels, c(1, 316, 328, 581, 617, 632))
-test_tensor <- tensorize_data(data, channels, c(1, 81))
+# build tensors of data
+train_tensors <- tensorize_data(data, channels, tile_leads)
+test_tensor <- tensorize_data(data, channels, mask_leads)
 
 # organize tensors as lists
 train_tile_tensors <- train_tensors[[1]]
@@ -63,6 +63,7 @@ train_mask_tensors <- train_tensors[[2]]
 test_tile_tensor <- test_tensor[[1]]
 test_mask_tensor <- test_tensor[[2]]
 
+# merge all training area tiles into one tensor 
 full_train_tile_tensor <- k_concatenate(c(train_tile_tensors[[1]],
                                           train_tile_tensors[[2]],
                                           train_tile_tensors[[3]],
@@ -70,6 +71,7 @@ full_train_tile_tensor <- k_concatenate(c(train_tile_tensors[[1]],
                                           train_tile_tensors[[5]]),
                                           1)
 
+# merge all training area masks into one tensor 
 full_train_mask_tensor <- k_concatenate(c(train_mask_tensors[[1]],
                                           train_mask_tensors[[2]],
                                           train_mask_tensors[[3]],
@@ -77,29 +79,31 @@ full_train_mask_tensor <- k_concatenate(c(train_mask_tensors[[1]],
                                           train_mask_tensors[[5]]),
                                           1)
 
+# clear memory by removing unnecessary data
 rm(train_tensors, test_tensor)
 
-# To view data use e.g.:
-# image(raster(data[[1]][1,,,1]))
+#---------------------------------------------------------------------------------------------------------------
 
-# ----- Prepare Dice ------------------------------------------------------------------------------------------
-#Based on the implementation showcased at https://blogs.rstudio.com/tensorflow/posts/2019-08-23-unet/
+##########################
+##### SETUP: METRICS #####
+##########################
 
-#define dice metric
+# Dice Coefficient
+# Based on the implementation showcased at https://blogs.rstudio.com/tensorflow/posts/2019-08-23-unet/
 dice <- keras::custom_metric("dice", function(y_true, y_pred, smooth = 1.0) {
   
-  # flatten ground truth and prediction tensors into 1D tensors
   y_true_f <- k_flatten(y_true)
   y_pred_f <- k_flatten(y_pred)
   
   intersection <- k_sum(k_abs(y_true_f * y_pred_f))
   
-  # calculate Dice coefficient
   (2 * intersection + smooth) / (k_sum(y_true_f) + k_sum(y_pred_f) + smooth)
 })
 
+# Intersection over Union
+# Based on the implementation showcased at https://stackoverflow.com/a/49297231
 IoU <- keras::custom_metric("IoU", function(y_true, y_pred, smooth = 1.0) {
-  #https://stackoverflow.com/a/49297231
+
   y_true_f <- k_flatten(y_true)
   y_pred_f <- k_flatten(y_pred)
   
@@ -109,32 +113,39 @@ IoU <- keras::custom_metric("IoU", function(y_true, y_pred, smooth = 1.0) {
   IoU <- (intersection + smooth) / (union + smooth)
 })
 
+#---------------------------------------------------------------------------------------------------------------
 
-# define dice loss
+#########################
+##### SETUP: LOSSES #####
+#########################
+
+# BCE Dice Loss
+# Based on the implementation showcased at https://blogs.rstudio.com/tensorflow/posts/2019-08-23-unet/
 bce_dice_loss <- function(y_true, y_pred) {
   
-  # calculate loss
   result <- loss_binary_crossentropy(y_true, y_pred) + (1 - dice(y_true, y_pred))
   
   return(result)
 }
 
+# Segmentation Loss
 seg_loss <- function(y_true, y_pred) {
 
   dice_loss <-  (1 - dice(y_true, y_pred))
   IoU_loss <- (1 - IoU(y_true, y_pred))
   
-  
   result <-  loss_binary_crossentropy(y_true, y_pred) + k_mean(dice_loss + IoU_loss)
   
   return(result)
-  
 }
 
+#---------------------------------------------------------------------------------------------------------------
 
-#----- Prepare Training Components ----------------------------------------------------------------------------
+###############################
+##### TRAINING COMPONENTS #####
+###############################
 
-# define image data generator
+# image data generator
 image_datagen <- image_data_generator(
   rotation_range = 180,
   width_shift_range = 0.2,
@@ -156,34 +167,64 @@ early_stopping_call = callback_early_stopping(
 
 ```
 
-```{r model, include = FALSE}
+```{r data_preprocessing}
 
+# If data has not been prepared and stored in an .RData file, data can be pre-processed using the following pipeline:
+
+# create tiles from image data and binary mask data
+# create_subsets("C:/User/Desktop/Raster.tif", dimensions = c(128, 128), fixed = TRUE, "C:/User/Desktop/Raster_Tiles/", .tif")
+
+# load tile data
+# data <- load_project_data(tile_path = "F:/Master_Thesis/data/tiles/", mask_path = "F:/Master_Thesis/data/masks/", dimensions = c(128, 128), ch_t = 6, ch_m = 1, ".tif")
+
+# split data into training and validation data
+# data <- split_data(data, 0.8)
+
+# add NDVI to data if desired
+# data[[1]] <- add_ndvi(data[[1]], 3, 4) # add NDVI to training area data
+# data[[3]] <- add_ndvi(data[[3]], 3, 4) # add NDVI to test area data
+# data[[5]] <- add_ndvi(data[[3]], 3, 4) # add NDVI to target area data
+
+# balance dataset if desired
+# pixel_balanced_data <- balance_data("pixel", data, 0.5)
+# image_balanced_data <- balance_data("image", data[[1]], data[[2]], 0.5)
+```
+
+```{r model, include = FALSE}
+############################
+##### INITIALIZE MODEL #####
+############################
 
 model <- build_unet_sigmoid()
-
+currently_used_loss <- seg_loss
+currently_used_optimizer <- optimizer_sgd(lr = 0.001, decay = 0.25/100)
+currently_used_metrics <- list(dice, IoU, metric_binary_accuracy)
 ```
 
 ```{r spatial_loocv}
 
 # initiate lists to hold results for crossvalidated training
-#weights <- list()
 histories <- list()
 evaluations <- list()
 
-
-# train a model for each area in data, leaving it out of training and using it for validation
+# train a cross validated model for each area in data
 for(i in 1:5){
   
-  cross_validation_tensor_selection <- loocv(train_tile_tensors, train_mask_tensors, i)
+  # select area tensors based on abloo_cv
+  cross_validation_tensor_selection <- abloo_cv(train_tile_tensors, train_mask_tensors, i)
+  
+  # split tile and mask tensors
   these.tiles <- cross_validation_tensor_selection[1]
   these.masks <- cross_validation_tensor_selection[2]
   
+  # gather model
   this.model <- clone_model(model)
   
+  # compile model
   this.model %>% compile(
-                  loss = seg_loss,
-                  optimizer = optimizer_sgd(lr = 0.001, decay = 0.25/100),
-                  metrics = list(dice, IoU)
+                  loss = currently_used_loss,
+                  optimizer = currently_used_optimizer,
+                  metrics = currently_used_metrics
                   )
   
   # fit cloned model to selected training data
@@ -198,7 +239,6 @@ for(i in 1:5){
         these.tiles[[1]],
         these.masks[[1]],
         image_datagen
-        #subset = "training"
         ),
 
       validation_data = flow_images_from_data(
@@ -206,39 +246,44 @@ for(i in 1:5){
         train_tile_tensors[[i]],
         train_mask_tensors[[i]],
         image_datagen
-        #subset = "validation"
         )
     )
   
-  #evaluate trained model
+  #evaluate trained model on left out area
   this.evaluation = evaluate(this.model, test_tile_tensor[[1]], test_mask_tensor[[1]])
 
   # save history and evaluation of this iteration
-  #weights [[paste0("area_", i)]] <- get_weights(this.model)
   histories[[paste0("area_", i)]] <- this.history
   evaluations[[paste0("area_", i)]] <- this.evaluation
 
+  # clear up ressources
   K$clear_session()
 }
 
-loocv_eval <- evaluate_loocv(evaluations)
-#save(weights, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name, "_loocv_weights.RData"))
-save(evaluations, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name, "_loocv_evals.RData"))
-save(histories, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name,"_loocv_histos.RData"))
-save(loocv_eval, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name,"_loocv.RData"))
+# evaluate model using cross validation
+abloo_cv_eval <- evaluate_abloo_cv(evaluations)
+
+# save results
+save(evaluations, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_loocv_evals.RData"))
+save(histories, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name,"_loocv_histos.RData"))
+save(abloo_cv_eval, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name,"_loocv.RData"))
 ```
 
 ```{r}
  
-full_set_model <- clone_model(model)
-full_set_model %>% compile(
-                  loss = seg_loss,
-                  optimizer = optimizer_sgd(lr = 0.001, decay = 0.25/100),
-                  metrics = list(dice, IoU)
+# gather model
+full_model <- clone_model(model)
+
+# compile model
+full_model %>% compile(
+                  loss = currently_used_loss,
+                  optimizer = currently_used_optimizer,
+                  metrics = currently_used_metrics
                   )
 
 
-full_set_history <- full_set_model %>%
+# fit cloned model to training data
+full_history <- full_model %>%
   fit_generator(
   epochs = 100,
   steps_per_epoch = dim(data[[1]])[1] / 16,
@@ -261,41 +306,62 @@ full_set_history <- full_set_model %>%
     )
   )
 
-full_set_evaluation = evaluate(full_set_model, test_tile_tensor[[1]], test_mask_tensor[[1]])
+# evaluate model on separate evaluation area 
+full_evaluation = evaluate(full_set_model, test_tile_tensor[[1]], test_mask_tensor[[1]])
 
-save(full_set_evaluation, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name, "_full_evals.RData"))
-save(full_set_history, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name, "_full_histos.RData"))
-
-save_model_hdf5(full_set_model, filepath = paste0("C:/Users/Basti/Desktop/", model_name, ".h5"), overwrite = TRUE)
-# test <- load_model_hdf5("C:/Users/Basti/Desktop/setup10/setup10.h5", custom_objects = c("dice" = dice))
-#test <- load_model_hdf5("C:/Users/Basti/Desktop/seg_loss_GNRIRE/seg_loss_GNRIRE.h5", custom_objects = c("dice" = dice, "IoU" = IoU, "seg_loss" = seg_loss))
-
-#data$target_extent@xmax = data$target_extent@xmin + 70.22222 
+# save results
+save(full_evaluation, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_full_evals.RData"))
+save(full_history, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_full_histos.RData"))
+save_model_hdf5(full_set_model, filepath = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, ".h5"), overwrite = TRUE)
 ```
 
 ```{r predict}
 
-predicted_classes <- full_set_model %>% predict(data[[5]][ , , , channels])
+# applay trained model to predict classes in target area
+predicted_classes <- full_model %>% predict(data[[5]][ , , , channels])
 
-mapped_predictions <- merge_tiles(predicted_classes[ , , , 1], 8, overlap = FALSE)
-rastered_predictions <- raster_maps(data = data, map = mapped_predictions)
-raster::plot(rastered_predictions, main = "Class Probability Prediction", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = cols
-             ,breaks = c(1.0, 0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65, 0.60, 0.55, 0.50)
+
+
+# merge predictions tiles
+predictions_merged <- merge_tiles(predicted_classes[ , , , 1], columns = 8, overlap = FALSE)
+
+# use target area information to georeference predictions
+prediction_raster <- rasterize_predictions(target_extent, target_crs_pre, target_crs_post, predictions_merged)
+
+# plot results of prediction
+raster::plot(prediction_raster, 
+             main = "Class Probabilities for Target Area", 
+             xlab = "Longitude [°E]", 
+             ylab = "Lattitude [°N]", 
+             col = cols,
+             breaks = c(1.0, 0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65, 0.60, 0.55, 0.50)
 )
 
-t_predicted_classes<- threshold_results(predicted_classes, 0.90, transparent = TRUE)
-t_mapped_predictions <- merge_tiles(t_predicted_classes[ , , ], 8, overlap = FALSE)
-t_rastered_predictions <- raster_maps(data = data, map = t_mapped_predictions)
-plot(t_rastered_predictions, main = "Thresholded Classes in Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = "darkgreen", legend = FALSE)
 
-writeRaster(t_rastered_predictions, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name, "_mask_raster.tif"), format="GTiff", overwrite = TRUE)
+
+# threshold prediction to build binary mask
+predicted_classes_binary <- threshold_results(predicted_classes, threshold = 0.90, transparent = TRUE)
+
+# merge binary predictions tiles
+binary_predictions_merged <- merge_tiles(t_predicted_classes[ , , ], columns = 8, overlap = FALSE)
+
+# use target area information to georeference predictions
+binary_prediction_raster <- rasterize_predictions(target_extent, target_crs_pre, target_crs_post, binary_predictions_merged)
+
+# plot binary results of prediction
+plot(binary_prediction_raster, main = "Vegetation Mask for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = "darkgreen", legend = FALSE)
+
+
+
+# save results
+writeRaster(prediction_raster, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_probs_raster.tif"), format="GTiff", overwrite = TRUE)
+writeRaster(binary_prediction_raster, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_mask_raster.tif"), format="GTiff", overwrite = TRUE)
 ```
 
 ```{r}
-model_name <- "temp"
-png(paste0("C:/Users/Basti/Desktop/", model_name, "/probabilities_dice.png"), width=549, height=547, pointsize = 20)
+png(paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "/probabilities_plot.png"), width=549, height=547, pointsize = 20)
 plot(rastered_predictions, 
-             main = "Class Probability Prediction", 
+             main = "Class Probabilities for Target Area", 
              xlab = "Longitude [°E]", 
              ylab = "Lattitude [°N]", 
              
@@ -311,22 +377,10 @@ png(paste0("C:/Users/Basti/Desktop/", model_name, "/class_mask_dice.png"), width
 plot(t_rastered_predictions, main = "Class Mask for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = c("white", "darkgreen"), legend = FALSE)
 dev.off()
 
-```
-
-```{r misc}
-writeRaster(t_rastered_predictions, file = "F:/Master_Thesis/raster.tif", format="GTiff" )
-
-full_set_model %>% save_model_hdf5("F:/Master_Thesis/model_batchnorm_1000.h5")
 
 par(mfrow=c(1,2))
 image(raster(test), main = "Input: NIR, RE, NDVI, NDVI shown")
 image(raster(map), main = "Predicted Classes")
 
 
-
-
-
-targt = cols 1116
-        rosw 1152
-        temp <- t_img[1:1112, 1:989]
 ```

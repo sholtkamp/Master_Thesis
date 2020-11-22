@@ -4,13 +4,20 @@
 #' @param mask_path String. File path to mask data.
 #' @param dimensions Integer. Vector of tile dimensions, e.g. c(128,128)
 #' @param ch_t Integer. Number of channels in tile data.
+#' @param format String. File format used for tile data.
 #' @param ch_m Integer. Number of channels in mask data.
+#'
 #' @references read_tiles()
 #' 
 #' @return Returns array containing project data
 #' @export
 #'
-#' @examples \dontrun{load_project_data(tile_path = "F:/Master_Thesis/data/tiles/", mask_path = "F:/Master_Thesis/data/masks/", ch_t = 6, ch_m = 1, dimensions = c(128, 128), format = ".tif")}
+#' @examples \dontrun{load_project_data(tile_path = "F:/Master_Thesis/data/tiles/", 
+#'                                      mask_path = "F:/Master_Thesis/data/masks/", 
+#'                                      ch_t = 6, 
+#'                                      ch_m = 1, 
+#'                                      dimensions = c(128, 128), 
+#'                                      format = ".tif")}
 load_project_data <- function(tile_path, mask_path, dimensions, ch_t, ch_m, format){
   
   # read raster data
