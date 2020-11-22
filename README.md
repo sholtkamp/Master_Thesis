@@ -1,7 +1,7 @@
 # Master Thesis: 
 ## Analysis of the Potential of Deep Learning Approaches for Ecological Monitoring Us-ing Multi-Spectral, UAV- Borne Imagery
 
-![Target Area](target_tiny.png)
+![Target Area](target_tiny.png =280x280)
 
 Current Status of detection accuracy:
 
