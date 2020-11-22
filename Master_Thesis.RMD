@@ -13,31 +13,47 @@ library(deepdrone)
 library(RColorBrewer)
 
 
-# Make Keras backend accessable
-K <- backend()
+####################
+##### SETTINGS #####
+####################
 
 # define colors for plotting
-cols <- brewer.pal(7, "RdYlGn")
+cols <- brewer.pal(11, "RdYlGn")
 cols2 <- rev(brewer.pal(5, "RdYlGn"))
 
 # define channels used 
-channels <- c(1, 2, 3) # --> Blue Green Red
+# channels <- c(1, 2, 3) # --> Blue Green Red
+channels <- c(2, 4, 5) # --> Green NIR RedEdge
+
+# define base directory and project name used for folders and result file organisation
+base_dir <- "C:/Users/Basti/Desktop/"
+project_name <- "geheim"
+dir.create(paste0(base_dir, project_name))
+
+# Make Keras backend accessible
+K <- backend()
+
+
+
 
 
 # ----- Prepare Data ------------------------------------------------------------------------------------------
 # load tile data
-# data <- load_data()
+data <- load_project_data(tile_path = "F:/Master_Thesis/data/tiles/",
+                          mask_path = "F:/Master_Thesis/data/masks/",
+                          dimensions = c(128, 128), ch_t = 6, ch_m = 1, ".tif")
 
 # add NDVI to data 
-# data[[1]] <- add_ndvi(data[[1]], 3, 4) # add NDVI to training data
-# data[[3]] <- add_ndvi(data[[3]], 3, 4) # add NDVI to predicition test area
+# data[[1]] <- add_ndvi(data[[1]], 3, 4) # add NDVI to training area data
+# data[[3]] <- add_ndvi(data[[3]], 3, 4) # add NDVI to test area data
 
 # balance dataset if desired
 # pixel_balanced_data <- balance_data("pixel", data, 0.5)
-# image_balanced_data <- balance_data("image", data, 0.5)
+# image_balanced_data <- balance_data("image", data[[1]], data[[2]], 0.5)
 
 # Build tensors of data
-load("C:/Users/Basti/Desktop/split_data.RData")
+load("F:/Master_Thesis/data/split_data.RData")
+
 train_tensors <- tensorize_data(data, channels, c(1, 316, 328, 581, 617, 632))
 test_tensor <- tensorize_data(data, channels, c(1, 81))
 
@@ -76,11 +92,23 @@ dice <- keras::custom_metric("dice", function(y_true, y_pred, smooth = 1.0) {
   y_true_f <- k_flatten(y_true)
   y_pred_f <- k_flatten(y_pred)
   
-  intersection <- k_sum(y_true_f * y_pred_f)
+  intersection <- k_sum(k_abs(y_true_f * y_pred_f))
   
   # calculate Dice coefficient
   (2 * intersection + smooth) / (k_sum(y_true_f) + k_sum(y_pred_f) + smooth)
 })
+
+IoU <- keras::custom_metric("IoU", function(y_true, y_pred, smooth = 1.0) {
+  #https://stackoverflow.com/a/49297231
+  y_true_f <- k_flatten(y_true)
+  y_pred_f <- k_flatten(y_pred)
+  
+  intersection <- k_sum(k_abs(y_true * y_pred))
+  union <-   (k_sum(y_true_f) + k_sum(y_pred_f) - intersection)
+  
+  IoU <- (intersection + smooth) / (union + smooth)
+})
+
 
 # define dice loss
 bce_dice_loss <- function(y_true, y_pred) {
@@ -91,38 +119,54 @@ bce_dice_loss <- function(y_true, y_pred) {
   return(result)
 }
 
+seg_loss <- function(y_true, y_pred) {
+
+  dice_loss <-  (1 - dice(y_true, y_pred))
+  IoU_loss <- (1 - IoU(y_true, y_pred))
+  
+  
+  result <-  loss_binary_crossentropy(y_true, y_pred) + k_mean(dice_loss + IoU_loss)
+  
+  return(result)
+  
+}
 
 
 #----- Prepare Training Components ----------------------------------------------------------------------------
 
 # define image data generator
 image_datagen <- image_data_generator(
-  rotation_range = 20,
-  zoom_range = 0.2,
+  rotation_range = 180,
+  width_shift_range = 0.2,
+  height_shift_range = 0.2,
   horizontal_flip = TRUE,
   vertical_flip = TRUE,
+  
   validation_split = 0.2
 )
 
 # define parameters for early stopping
 early_stopping_call = callback_early_stopping(
-                        monitor = "val_dice",
-                        mode = "max",
-                        min_delta = 0.0001,
-                        patience = 15,
+                        monitor = "val_loss",
+                        mode = "min",
+                        min_delta = 0.01,
+                        patience = 5,
                         restore_best_weights = TRUE
-                        )
+)
+
 ```
 
 ```{r model, include = FALSE}
 
-model <- build_unet_original()
+
+model <- build_unet_sigmoid()
 
 ```
 
-```{r train_models_spatial_loocv}
+```{r spatial_loocv}
 
 # initiate lists to hold results for crossvalidated training
+#weights <- list()
 histories <- list()
 evaluations <- list()
 
@@ -137,16 +181,17 @@ for(i in 1:5){
   this.model <- clone_model(model)
   
   this.model %>% compile(
-                  loss = "binary_crossentropy",
-                  optimizer = optimizer_sgd(lr = 0.0001, momentum = 0.99),
-                  metrics = list(dice, "accuracy")
+                  loss = seg_loss,
+                  optimizer = optimizer_sgd(lr = 0.001, decay = 0.25/100),
+                  metrics = list(dice, IoU)
                   )
   
   # fit cloned model to selected training data
   this.history <- this.model %>%
     fit_generator(
-      epochs = 10,
+      epochs = 100,
       steps_per_epoch = dim(these.tiles[[1]])[1] / 16,
+      callbacks = early_stopping_call,
 
       generator = flow_images_from_data(
         batch_size = 16,
@@ -162,175 +207,126 @@ for(i in 1:5){
         train_mask_tensors[[i]],
         image_datagen
         #subset = "validation"
-        ),
-      
-      callbacks = early_stopping_call
+        )
     )
   
-  # evaluate trained model
+  #evaluate trained model
   this.evaluation = evaluate(this.model, test_tile_tensor[[1]], test_mask_tensor[[1]])
 
   # save history and evaluation of this iteration
+  #weights [[paste0("area_", i)]] <- get_weights(this.model)
   histories[[paste0("area_", i)]] <- this.history
   evaluations[[paste0("area_", i)]] <- this.evaluation
 
   K$clear_session()
 }
 
-# select best and worst model depending on dice
-selected_models <- select_models(models, evaluations)
+loocv_eval <- evaluate_loocv(evaluations)
+#save(weights, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name, "_loocv_weights.RData"))
+save(evaluations, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name, "_loocv_evals.RData"))
+save(histories, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name,"_loocv_histos.RData"))
+save(loocv_eval, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name,"_loocv.RData"))
+```
 
-best_model <- clone_model(selected_models[[1]])
-best_model %>% compile(
-                  loss = "binary_crossentropy",
-                  optimizer = optimizer_sgd(lr = 0.0001, momentum = 0.99),
-                  metrics = list(dice, "accuracy")
+```{r}
+ 
+full_set_model <- clone_model(model)
+full_set_model %>% compile(
+                  loss = seg_loss,
+                  optimizer = optimizer_sgd(lr = 0.001, decay = 0.25/100),
+                  metrics = list(dice, IoU)
                   )
 
 
-loocv_eval <- evaluate_loocv(evaluations)
+full_set_history <- full_set_model %>%
+  fit_generator(
+  epochs = 100,
+  steps_per_epoch = dim(data[[1]])[1] / 16,
+  callbacks = early_stopping_call,
 
+  generator = flow_images_from_data(
+    batch_size = 16,
+    full_train_tile_tensor,
+    full_train_mask_tensor,
+    image_datagen,
+    subset = "training"
+    ),
+
+  validation_data = flow_images_from_data(
+    batch_size = 16,
+    full_train_tile_tensor,
+    full_train_mask_tensor,
+    image_datagen,
+    subset = "validation"
+    )
+  )
+
+full_set_evaluation = evaluate(full_set_model, test_tile_tensor[[1]], test_mask_tensor[[1]])
+
+save(full_set_evaluation, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name, "_full_evals.RData"))
+save(full_set_history, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name, "_full_histos.RData"))
+
+save_model_hdf5(full_set_model, filepath = paste0("C:/Users/Basti/Desktop/", model_name, ".h5"), overwrite = TRUE)
+# test <- load_model_hdf5("C:/Users/Basti/Desktop/setup10/setup10.h5", custom_objects = c("dice" = dice))
+#test <- load_model_hdf5("C:/Users/Basti/Desktop/seg_loss_GNRIRE/seg_loss_GNRIRE.h5", custom_objects = c("dice" = dice, "IoU" = IoU, "seg_loss" = seg_loss))
+
+#data$target_extent@xmax = data$target_extent@xmin + 70.22222 
 ```
-
-patial_cross_val_history <- this.model %>%
-                                  fit_generator(
-                                  epochs = 250,
-                                  steps_per_epoch = dim(data[[1]])[1] / 16,
-    
-                                  generator = flow_images_from_data(
-                                    batch_size = 16,
-                                    full_train_tile_tensor,
-                                    full_train_mask_tensor,
-                                    image_datagen,
-                                    subset = "training"
-                                    ),
-                            
-                                  validation_data = flow_images_from_data(
-                                    batch_size = 16,
-                                    full_train_tile_tensor,
-                                    full_train_mask_tensor,
-                                    image_datagen,
-                                    subset = "validation"
-                                    ),
-                                  
-                                  callbacks = early_stopping_call
-                                  )
-
-
-
 
 ```{r predict}
 
-# select best and worst model depending on dice
-selected_models <- select_models(models, evaluations)
+predicted_classes <- full_set_model %>% predict(data[[5]][ , , , channels])
 
-# use both models to predict classes of target area
-best_pred <- selected_models[[1]] %>% predict(data[[3]][ , , , channels])
-worst_pred <- selected_models[[2]] %>% predict(data[[3]][ , , , channels])
+mapped_predictions <- merge_tiles(predicted_classes[ , , , 1], 8, overlap = FALSE)
+rastered_predictions <- raster_maps(data = data, map = mapped_predictions)
+raster::plot(rastered_predictions, main = "Class Probability Prediction", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = cols
+             ,breaks = c(1.0, 0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65, 0.60, 0.55, 0.50)
+)
 
-# combine tiles of class 1 and 2 predicted by best model into maps
-best_map_c1 <- superset_results(best_pred[ , , , 1], 8)
-best_map_c2 <- superset_results(best_pred[ , , , 2], 8)
+t_predicted_classes<- threshold_results(predicted_classes, 0.90, transparent = TRUE)
+t_mapped_predictions <- merge_tiles(t_predicted_classes[ , , ], 8, overlap = FALSE)
+t_rastered_predictions <- raster_maps(data = data, map = t_mapped_predictions)
+plot(t_rastered_predictions, main = "Thresholded Classes in Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = "darkgreen", legend = FALSE)
 
-# combine tiles of class 1 and 2 predicted by worst model into maps
-worst_map_c1 <- superset_results(worst_pred[ , , , 1], 8)
-worst_map_c2<- superset_results(worst_pred[ , , , 2], 8)
-
-# try binary classifaction on best model predictions
-binary_map <- filter_results_binary(best_map_c1, best_map_c2)
-
-# try thresholding on best model predictions and combine tiles
-thresholded_best_pred<- threshold_results(best_pred, 0.788)
-thresholded_best_map <- superset_results(thresholded_best_pred, 8)
-
-thresholded_worst_pred<- threshold_results(worst_pred, 0.8672)
-thresholded_worst_map <- superset_results(thresholded_worst_pred, 8)
-
-# add coordinated and projections to maps
-best_map_raster <- raster_maps(data = data, map = best_map_c1)
-worst_map_raster <- raster_maps(data = data, map = worst_map_c1)
-binary_map_raster <- raster_maps(data = data, map = binary_map)
-thresholded_best_map_raster <- raster_maps(data = data, map = thresholded_best_map)
-thresholded_worst_map_raster <- raster_maps(data = data, map = thresholded_worst_map)
-
-# calculate differences between best and worst results
-difference_map <- abs(best_map_raster - worst_map_raster)
-
-
-
-plot(best_map_raster, main = "Predicted Classes for Target Area, Highest Dice", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = cols)
-plot(worst_map_raster, main = "Predicted Classes for Target Area, Lowest Dice", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = cols)
-plot(binary_map_raster, main = "Predicted Binary Classes for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]")
-plot(thresholded_best_map_raster, main = "Predicted Thresholded Classes for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = c("white", "darkgreen"), legend = FALSE)
-plot(thresholded_worst_map_raster, main = "Predicted Thresholded Classes for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = c("white", "darkgreen"), legend = FALSE)
-
-plot(difference_map, main = "Differences in Predicted Classes for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = cols2)
-
+writeRaster(t_rastered_predictions, file = paste0("C:/Users/Basti/Desktop/", model_name, "/", model_name, "_mask_raster.tif"), format="GTiff", overwrite = TRUE)
 ```
+
 ```{r}
-png("C:/Users/Basti/Desktop/binary.png", width=1920, height=1080, pointsize = 20)
-plot(binary_map_raster, main = "Predicted Classes for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = cols, legend = FALSE)
+model_name <- "temp"
+png(paste0("C:/Users/Basti/Desktop/", model_name, "/probabilities_dice.png"), width=549, height=547, pointsize = 20)
+plot(rastered_predictions, 
+             main = "Class Probability Prediction", 
+             xlab = "Longitude [°E]", 
+             ylab = "Lattitude [°N]", 
+             
+             col = cols, 
+             breaks = c(1.0, 0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65, 0.60, 0.55, 0.50),
+     
+             par(bty="l", cex.axis= 0.75, cex.lab = 0.85)
+
+)
 dev.off()
 
-png("C:/Users/Basti/Desktop/best.png", width=1920, height=1080, pointsize = 20)
-plot(best_map_raster, main = "Predicted Classes for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = cols)
+png(paste0("C:/Users/Basti/Desktop/", model_name, "/class_mask_dice.png"), width=519, height=600, pointsize = 20)
+plot(t_rastered_predictions, main = "Class Mask for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = c("white", "darkgreen"), legend = FALSE)
 dev.off()
 
-png("C:/Users/Basti/Desktop/worst.png", width=1920, height=1080, pointsize = 20)
-plot(worst_map_raster, main = "Predicted Classes for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = cols)
-dev.off()
-
-png("C:/Users/Basti/Desktop/diff.png", width=1920, height=1080, pointsize = 20)
-plot(difference_map, main = "Difference in Predicted Classes for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = cols2)
-dev.off()
-
-png("C:/Users/Basti/Desktop/tres_b.png", width=1920, height=1080, pointsize = 20)
-plot(thresholded_best_map_raster, main = "Predicted Binary Classes for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = c("white", "darkgreen"), legend = FALSE)
-dev.off()
-
-png("C:/Users/Basti/Desktop/tres_w.png", width=1920, height=1080, pointsize = 20)
-plot(thresholded_worst_map_raster, main = "Predicted Binary Classes for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = c("white", "darkgreen"), legend = FALSE)
-dev.off()
 ```
 
-writeRaster(elev.r, "elev_out.tif", format="GTiff" )
+```{r misc}
+writeRaster(t_rastered_predictions, file = "F:/Master_Thesis/raster.tif", format="GTiff" )
 
-all.equal(get_weights(models$area_1), get_weights(models$area_2))
-
-
-prime <- models[[1]]
-predictions <- prime %>% predict(target[ , , 1:3])
-
-results <- threshold_results(predictions, 0.57)
-map <- superset_results(results, 10)
-image(raster(map), main = "Predicted Classes")
-
-
-test <- superset_results(data[[5]][, , , 7], 10)
-
+full_set_model %>% save_model_hdf5("F:/Master_Thesis/model_batchnorm_1000.h5")
 
 par(mfrow=c(1,2))
 image(raster(test), main = "Input: NIR, RE, NDVI, NDVI shown")
 image(raster(map), main = "Predicted Classes")
+
+
+
+
+
+targt = cols 1116
+        rosw 1152
+        temp <- t_img[1:1112, 1:989]
 ```
-
-model %>% save_model_hdf5("F:/Master_Thesis/model_custom.h5")
-```
-
-Notes:   
-  # SGD, 4, 250 epochs, 15 steps, loss 0,18, acc 94.5
-  # SGD, 5, ", ", loss 0.39, vaL_loss 0.42, acc 93.5 --> LR too low
-  
-  # ADAM 4 too fast
-  # ADAM, 5, 250 epochs, 15 step, loss 0.188, val_loss 0.38, acc 94.5 --> overfit, result not good
-  
-  # ADAGRAD, 250, 15, l 0.15, vl 0.29, acc 94.5
-
-
-# invert msak:
-
-#data[[2]] <- +(!data[[2]])
-#data[[4]] <- +(!data[[4]])
-
-oom errors
-#grid.raster(map)

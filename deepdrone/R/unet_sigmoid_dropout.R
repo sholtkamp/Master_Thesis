@@ -9,7 +9,7 @@
 #' @export
 #'
 #' @examples
-build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
+build_unet_sigmoid_drop <- function(input_shape = c(128, 128, 3), num_classes = 2){
   
   
   #---Input-------------------------------------------------------------------------------------
@@ -21,7 +21,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "down_1", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "down_2", padding = "same") %>%
-    layer_activation("relu")
+    layer_activation("relu") %>%
+    layer_dropout(rate = 0.1) 
   down1_pool <- down1 %>%
     layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
   
@@ -30,7 +31,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 128, kernel_size = c(3, 3), name = "down_3", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 128, kernel_size = c(3, 3), name = "down_4", padding = "same") %>%
-    layer_activation("relu")
+    layer_activation("relu") %>%
+    layer_dropout(rate = 0.2)
   down2_pool <- down2 %>%
     layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
   
@@ -39,7 +41,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 256, kernel_size = c(3, 3), name = "down_5", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 256, kernel_size = c(3, 3), name = "down_6", padding = "same") %>%
-    layer_activation("relu")
+    layer_activation("relu") %>%
+    layer_dropout(rate = 0.3)
   down3_pool <- down3 %>%
     layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
   
@@ -48,7 +51,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "down_7", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "down_8", padding = "same") %>%
-    layer_activation("relu")
+    layer_activation("relu") %>%
+    layer_dropout(rate = 0.4)
   down4_pool <- down4 %>%
     layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
   
@@ -69,7 +73,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "up_8", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "up_7", padding = "same") %>%
-    layer_activation("relu")
+    layer_activation("relu") %>%
+    layer_dropout(rate = 0.4)
   
   up3 <- up4 %>%
     layer_upsampling_2d(size = c(2, 2)) %>%
@@ -77,7 +82,9 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 256, kernel_size = c(3, 3), name = "up_6", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 256, kernel_size = c(3, 3), name = "up_5", padding = "same") %>%
-    layer_activation("relu") 
+    layer_activation("relu") %>%
+    layer_dropout(rate = 0.3)
+
   
   up2 <- up3 %>%
     layer_upsampling_2d(size = c(2, 2)) %>%
@@ -85,7 +92,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 128, kernel_size = c(3, 3), name = "up_4", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 128, kernel_size = c(3, 3), name = "up_3", padding = "same") %>%
-    layer_activation("relu") 
+    layer_activation("relu")  %>%
+    layer_dropout(rate = 0.2)
   
   up1 <- up2 %>%
     layer_upsampling_2d(size = c(2, 2)) %>%
@@ -93,7 +101,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "up_2", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "up_1", padding = "same") %>%
-    layer_activation("relu") 
+    layer_activation("relu")  %>%
+    layer_dropout(rate = 0.1)
   
   
   #---Classification/Output---------------------------------------------------------------------

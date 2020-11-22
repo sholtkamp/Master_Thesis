@@ -9,7 +9,7 @@
 #' @export
 #'
 #' @examples
-build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
+build_unet_deeper <- function(input_shape = c(128, 128, 3), num_classes = 2){
   
   
   #---Input-------------------------------------------------------------------------------------
@@ -21,7 +21,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "down_1", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "down_2", padding = "same") %>%
-    layer_activation("relu")
+    layer_activation("relu") %>%
+    layer_batch_normalization() 
   down1_pool <- down1 %>%
     layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
   
@@ -30,7 +31,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 128, kernel_size = c(3, 3), name = "down_3", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 128, kernel_size = c(3, 3), name = "down_4", padding = "same") %>%
-    layer_activation("relu")
+    layer_activation("relu")%>%
+    layer_batch_normalization()
   down2_pool <- down2 %>%
     layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
   
@@ -39,7 +41,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 256, kernel_size = c(3, 3), name = "down_5", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 256, kernel_size = c(3, 3), name = "down_6", padding = "same") %>%
-    layer_activation("relu")
+    layer_activation("relu")%>%
+    layer_batch_normalization()
   down3_pool <- down3 %>%
     layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
   
@@ -48,28 +51,49 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "down_7", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "down_8", padding = "same") %>%
-    layer_activation("relu")
+    layer_activation("relu")%>%
+    layer_batch_normalization()
   down4_pool <- down4 %>%
+    layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
+  
+  down5 <- down4_pool %>%
+    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "down_9", padding = "same") %>%
+    layer_activation("relu") %>%
+    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "down_10", padding = "same") %>%
+    layer_activation("relu") %>%
+    layer_batch_normalization()
+  down5_pool <- down5 %>%
     layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
   
   
   #---Center-----------------------------------------------------------------------------------
-  center <- down4_pool %>%
+  center <- down5_pool %>%
     layer_dropout(rate = 0.5) %>%
-    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "center_1", padding = "same") %>%
+    layer_conv_2d(filters = 2048, kernel_size = c(3, 3), name = "center_1", padding = "same") %>%
     layer_activation("relu") %>%
-    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "center_2", padding = "same") %>%
-    layer_activation("relu")
+    layer_conv_2d(filters = 2048, kernel_size = c(3, 3), name = "center_2", padding = "same") %>%
+    layer_activation("relu") %>%
+    layer_batch_normalization()
   
   
   #---Upsampling--------------------------------------------------------------------------------
-  up4 <- center %>%
+  up5 <- center %>%
+    layer_upsampling_2d(size = c(2, 2)) %>%
+    {layer_concatenate(inputs = list(down5, .), axis = 3)} %>%
+    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "up_", padding = "same") %>%
+    layer_activation("relu") %>%
+    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "up", padding = "same") %>%
+    layer_activation("relu") %>%
+    layer_batch_normalization()
+  
+  up4 <- up5 %>%
     layer_upsampling_2d(size = c(2, 2)) %>%
     {layer_concatenate(inputs = list(down4, .), axis = 3)} %>%
     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "up_8", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "up_7", padding = "same") %>%
-    layer_activation("relu")
+    layer_activation("relu") %>%
+    layer_batch_normalization()
   
   up3 <- up4 %>%
     layer_upsampling_2d(size = c(2, 2)) %>%
@@ -77,7 +101,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 256, kernel_size = c(3, 3), name = "up_6", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 256, kernel_size = c(3, 3), name = "up_5", padding = "same") %>%
-    layer_activation("relu") 
+    layer_activation("relu") %>%
+    layer_batch_normalization()
   
   up2 <- up3 %>%
     layer_upsampling_2d(size = c(2, 2)) %>%
@@ -85,7 +110,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 128, kernel_size = c(3, 3), name = "up_4", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 128, kernel_size = c(3, 3), name = "up_3", padding = "same") %>%
-    layer_activation("relu") 
+    layer_activation("relu") %>%
+    layer_batch_normalization()
   
   up1 <- up2 %>%
     layer_upsampling_2d(size = c(2, 2)) %>%
@@ -93,7 +119,8 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "up_2", padding = "same") %>%
     layer_activation("relu") %>%
     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "up_1", padding = "same") %>%
-    layer_activation("relu") 
+    layer_activation("relu") %>%
+    layer_batch_normalization()
   
   
   #---Classification/Output---------------------------------------------------------------------

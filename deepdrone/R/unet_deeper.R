@@ -9,7 +9,7 @@
 #' @export
 #'
 #' @examples
-build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
+build_unet_deeper <- function(input_shape = c(128, 128, 3), num_classes = 2){
   
   
   #---Input-------------------------------------------------------------------------------------
@@ -52,18 +52,34 @@ build_unet_sigmoid <- function(input_shape = c(128, 128, 3), num_classes = 2){
   down4_pool <- down4 %>%
     layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
   
+  down5 <- down4_pool %>%
+    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "down_9", padding = "same") %>%
+    layer_activation("relu") %>%
+    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "down_10", padding = "same") %>%
+    layer_activation("relu")
+  down5_pool <- down5 %>%
+    layer_max_pooling_2d(pool_size = c(2, 2), strides = c(2, 2))
+  
   
   #---Center-----------------------------------------------------------------------------------
-  center <- down4_pool %>%
-    layer_spatial_dropout(rate = 0.2) %>%
-    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "center_1", padding = "same") %>%
+  center <- down5_pool %>%
+    layer_dropout(rate = 0.5) %>%
+    layer_conv_2d(filters = 2048, kernel_size = c(3, 3), name = "center_1", padding = "same") %>%
     layer_activation("relu") %>%
-    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "center_2", padding = "same") %>%
+    layer_conv_2d(filters = 2048, kernel_size = c(3, 3), name = "center_2", padding = "same") %>%
     layer_activation("relu")
   
   
   #---Upsampling--------------------------------------------------------------------------------
-  up4 <- center %>%
+  up5 <- center %>%
+    layer_upsampling_2d(size = c(2, 2)) %>%
+    {layer_concatenate(inputs = list(down5, .), axis = 3)} %>%
+    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "up_", padding = "same") %>%
+    layer_activation("relu") %>%
+    layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "up", padding = "same") %>%
+    layer_activation("relu")
+  
+  up4 <- up5 %>%
     layer_upsampling_2d(size = c(2, 2)) %>%
     {layer_concatenate(inputs = list(down4, .), axis = 3)} %>%
     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "up_8", padding = "same") %>%

@@ -1,17 +1,17 @@
-#' Add NDVI data calculated from tiles to data set at highest dimension index +1
+#' Add NDVI data calculated from tiles to data set at last dimension
 #'
-#' @param data Array. Tile data. Needs to contain NIR and RED bands.
-#' @param red_band Integer. Number of RED band.
-#' @param nir_band Integer. Number of NIR band.
+#' @param data Array. Image data tiles. Needs to contain NIR and RED bands.
+#' @param index_red_band Integer. Number of RED band.
+#' @param index_nir_band Integer. Number of NIR band.
 #'
 #' @return Returns array with added NDVI dimension.
 #' @export
 #'
-#' @examples \dontrun{data_ndvi <- add_ndvi(data, 1, 3)}
-add_ndvi <- function(data, red_band, nir_band){
+#' @examples \dontrun{add_ndvi <- add_ndvi(image_data, 1, 3)}
+add_ndvi <- function(data, index_red_band, index_nir_band){
 
   cat("\n")
-  print("Calculating NDVI:")
+  print("Calculating NDVI")
 
   # initiate array to hold all tile data plus ndvi
   temp_tiles <- array(dim = c(dim(data)[1], dim(data)[2],
@@ -36,8 +36,8 @@ add_ndvi <- function(data, red_band, nir_band){
 
           # if l is the additional layer computer ndvi and put it into array
           if(l == dim(temp_tiles)[4]) {
-            temp_tiles[i, j, k, l] <- (data[i, j, k, nir_band] - data[i, j, k, red_band]) /
-              (data[i, j, k, nir_band] + data[i, j, k, red_band]) # calculate ndvi using standard formula
+            temp_tiles[i, j, k, l] <- (data[i, j, k, index_nir_band] - data[i, j, k, index_red_band]) /
+              (data[i, j, k, index_nir_band] + data[i, j, k, index_red_band]) # calculate ndvi using standard formula
           }
         }
       }

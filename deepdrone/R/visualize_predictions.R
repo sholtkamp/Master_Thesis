@@ -7,7 +7,7 @@
 #' @export
 #'
 #' @examples \dontrun{class_array <- binary_threshold_results(prediciton_array, 0.95)} This thresholds an array of predicitons with a minimum probability of 95% for class to. This can be interpreted as, for example, "A pixel needs to have at least a 95% probability of beeing a tree to be considered as one for the final result".
-threshold_results <- function(predictions, threshold){
+threshold_results <- function(predictions, threshold, transparent){
 
   # initiate array to fill with thresholded class values
   results <- array(dim = c(dim(predictions)[1], dim(predictions)[2], dim(predictions)[3]))
@@ -27,15 +27,21 @@ threshold_results <- function(predictions, threshold){
           # if class 2 is less probable than given threshold
           if(predictions[i, j, k, 1] <= threshold){
 
+            if(transparent == TRUE){
             # set class in result array to 0
-            results[i, j, k] = 0
+            results[i, j, k] <- NA
+            }
+            
+            else {
+              results[i, j, k] <- 0
+            }
           }
 
           # if threshold is exceeded
           else {
 
             # set class in result array to 1
-            results[i, j, k] = 1
+            results[i, j, k] <- 1
           }
         }
       }
@@ -46,99 +52,20 @@ threshold_results <- function(predictions, threshold){
 }
 
 
-#' Build a prediciton map for the complete test area
-#'
-#' @param prediction_tiles (thresholded) Output of a prediciton made using the Keras model
-#' @param columns Number of columns/tiles on x-axis. Used to break rows of input tiles
-#'
-#' @return 2D array of predicted class values
-#' @export
-#'
-#' @examples \dontrun{result_map <- build_map(test_data[ , , ], 17)}
-superset_results <- function(prediction_tiles, columns){
-
-  # determine tile resolution of map from input
-  x_resolution <- dim(prediction_tiles)[2]
-  y_resolution <- dim(prediction_tiles)[3]
-
-  # calculate number of rows given number of tiles and columns
-  rows <- (dim(prediction_tiles)[1] / columns)
-
-  # initiate array with dimensions of test area to fill with prediciton data
-  map_array <- array(dim = c((rows * x_resolution), (columns * y_resolution)))
-
-  # initiate counters for looping
-  col_count <- 0
-  row_count <- 0
-  row_mod <- 0
 
 
-  # for each prediciton tile
-  for(i in 1:dim(prediction_tiles)[1]){
-
-    # for each x
-    for(j in 1:dim(prediction_tiles)[2]){
-      # determine current x coordinate
-      x_coor <- j + (col_count * x_resolution)
-
-      # for each y
-      for(k in 1:dim(prediction_tiles)[3]){
-        # determine current y coordinate
-        y_coor <- k + (row_count * y_resolution)
-
-        # insert predicted value
-        map_array[x_coor, y_coor] <- prediction_tiles[i, j, k]
-      }
-    }
-
-    # increase row_count after each loop
-    row_count <- (row_count + 1)
-
-    # if the maximum number of tiles per row is reached
-    if(row_count == columns){
-      # reset position in row count
-      row_count <- 0
-
-      # increase column count
-      col_count <- (col_count + 1)
-    }
-  }
-
-  return(map_array)
-}
-
-
-select_models <- function(models, evaluations){
-  
-  high_dice <- 0
-  high_id <- 0
-  
-  low_dice <- 1
-  low_id <- 0
-  
-  
-  for(i in 1:length(models))
-    if(high_dice < evaluations[[i]]$dice){
-      high_dice <- evaluations[[i]]$dice
-      high_id <- i
-    }
-  if(low_dice > evaluations[[i]]$dice){
-    low_dice <- evaluations[[i]]$dice
-    low_id <- i
-  }
-  
-  best_model <- models[[high_id]]
-  worst_model <- models[[low_id]]
-  
-  
-  return(list("best_model" = best_model, "worst_model" = worst_model))
-}
 
 raster_maps <- function(data, map){
+  
+  ext <- data[[6]]
+  crs <- data[[7]]
   map_raster <- raster(map)
-  map_raster@extent <- data[[4]]
-  map_raster@crs <- data[[5]]
-  map_raster <- projectRaster(from = map_raster, crs = "+proj=longlat +datum=WGS84 +no_defs")
+  map_raster@extent <- extent(480321.8,
+                              480396.5,
+                              5796794,
+                              5796879)
+  map_raster@crs <- crs("+proj=utm +zone=32 +datum=WGS84 +init=EPSG:32632 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0")
+  map_raster <- projectRaster(from = map_raster, crs = "+proj=longlat +datum=WGS84 +no_defs +zone=32 +init=EPSG:32632")
   
   return(map_raster)
 }

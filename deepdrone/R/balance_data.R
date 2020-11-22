@@ -9,7 +9,7 @@
 #' @export
 #'
 #' @examples \dontrun{balanced_dataset <- balance_data("pixel", tile_data, mask_data, 0.5)}
-balance_data <- function(paradigm = "pixel", data, aim){
+balance_data <- function(paradigm = "pixel", tile_data, mask_data, aim){
 
   aim <- as.double(aim)
   tile_data <- data[[1]]
