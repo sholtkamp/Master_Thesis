@@ -17,7 +17,7 @@ rasterize_predictions <- function(area_extent, target_crs_pre, target_crs_post, 
   map_raster <- raster(merged_predictions)
   map_raster@extent <- area_extent
   map_raster@crs <- target_crs_pre
-  map_raster <- projectRaster(from = map_raster, target_crs_post)
+  map_raster <- projectRaster(from = map_raster, crs = target_crs_post)
   
   return(map_raster)
 }

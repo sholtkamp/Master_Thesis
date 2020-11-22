@@ -32,7 +32,7 @@ mask_leads <- c(1, 81)
 
 # attributes of target area to build referenced raster
 target_crs_pre <- crs("+proj=utm +zone=32 +datum=WGS84 +init=EPSG:32632 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0")
-target_crs_post <- crs = "+proj=longlat +datum=WGS84 +no_defs +zone=32 +init=EPSG:32632"
+target_crs_post <- crs("+proj=longlat +datum=WGS84 +no_defs +zone=32 +init=EPSG:32632")
 target_extent <- extent(480321.8, 480396.5, 5796794, 5796879)
 
 # define base directory and project name used for folders and result file organisation
@@ -307,12 +307,12 @@ full_history <- full_model %>%
   )
 
 # evaluate model on separate evaluation area 
-full_evaluation = evaluate(full_set_model, test_tile_tensor[[1]], test_mask_tensor[[1]])
+full_evaluation = evaluate(full_model, test_tile_tensor[[1]], test_mask_tensor[[1]])
 
 # save results
 save(full_evaluation, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_full_evals.RData"))
 save(full_history, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_full_histos.RData"))
-save_model_hdf5(full_set_model, filepath = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, ".h5"), overwrite = TRUE)
+save_model_hdf5(full_model, filepath = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, ".h5"), overwrite = TRUE)
 ```
 
 ```{r predict}
@@ -329,12 +329,12 @@ predictions_merged <- merge_tiles(predicted_classes[ , , , 1], columns = 8, over
 prediction_raster <- rasterize_predictions(target_extent, target_crs_pre, target_crs_post, predictions_merged)
 
 # plot results of prediction
-raster::plot(prediction_raster, 
-             main = "Class Probabilities for Target Area", 
-             xlab = "Longitude [°E]", 
-             ylab = "Lattitude [°N]", 
-             col = cols,
-             breaks = c(1.0, 0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65, 0.60, 0.55, 0.50)
+plot(prediction_raster, 
+     main = "Class Probabilities for Target Area", 
+     xlab = "Longitude [°E]", 
+     ylab = "Lattitude [°N]", 
+     col = cols,
+     breaks = c(1.0, 0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65, 0.60, 0.55, 0.50)
 )
 
 
@@ -343,13 +343,18 @@ raster::plot(prediction_raster,
 predicted_classes_binary <- threshold_results(predicted_classes, threshold = 0.90, transparent = TRUE)
 
 # merge binary predictions tiles
-binary_predictions_merged <- merge_tiles(t_predicted_classes[ , , ], columns = 8, overlap = FALSE)
+binary_predictions_merged <- merge_tiles(predicted_classes_binary[ , , ], columns = 8, overlap = FALSE)
 
 # use target area information to georeference predictions
 binary_prediction_raster <- rasterize_predictions(target_extent, target_crs_pre, target_crs_post, binary_predictions_merged)
 
 # plot binary results of prediction
-plot(binary_prediction_raster, main = "Vegetation Mask for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = "darkgreen", legend = FALSE)
+plot(binary_prediction_raster, 
+     main = "Vegetation Mask for Target Area", 
+     xlab = "Longitude [°E]", 
+     ylab = "Lattitude [°N]", 
+     col = "darkgreen", 
+     legend = FALSE)
 
 
 
@@ -379,8 +384,19 @@ dev.off()
 
 
 par(mfrow=c(1,2))
-image(raster(test), main = "Input: NIR, RE, NDVI, NDVI shown")
-image(raster(map), main = "Predicted Classes")
+plot(prediction_raster, 
+             main = "Class Probabilities for Target Area", 
+             xlab = "Longitude [°E]", 
+             ylab = "Lattitude [°N]", 
+             col = cols,
+             breaks = c(1.0, 0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65, 0.60, 0.55, 0.50)
+)
+plot(binary_prediction_raster, 
+     main = "Vegetation Mask for Target Area", 
+     xlab = "Longitude [°E]", 
+     ylab = "Lattitude [°N]", 
+     col = "darkgreen", 
+     legend = FALSE)
 
 
 ```
