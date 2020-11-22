@@ -1,5 +1,5 @@
 # Master Thesis: 
-## Detection of Shrubs in Swamp Areas based on UAV Imagery and Deep Learning (working title)
+## Analysis of the Potential of Deep Learning Approaches for Ecological Monitoring Us-ing Multi-Spectral, UAV- Borne Imagery
 
 
 Current Status of detection accuracy:
