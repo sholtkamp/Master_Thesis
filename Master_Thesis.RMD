@@ -247,12 +247,12 @@ early_stopping_call_soft = callback_early_stopping(
 # currently_used_epochs <- 100
 
 # Setup Final
-# model <- build_unet_kernel_7()
-# currently_used_loss <- seg_loss
-# currently_used_optimizer <- optimizer_sgd(lr = 0.002)
-# currently_used_metrics <- list(dice, IoU)
-# currently_used_es_call <- early_stopping_call_soft
-# currently_used_epochs <- 100
+model <- build_unet_kernel_7()
+currently_used_loss <- seg_loss
+currently_used_optimizer <- optimizer_sgd(lr = 0.002)
+currently_used_metrics <- list(dice, IoU)
+currently_used_es_call <- early_stopping_call_soft
+currently_used_epochs <- 100
 
 # Setup Abstract
 # model <- build_unet_kernel_7()
@@ -263,7 +263,7 @@ early_stopping_call_soft = callback_early_stopping(
 # currently_used_epochs <- 100
 ```
 
-```{r_standard_training}
+```{r standard_training}
  
 # gather model
 full_model <- clone_model(model)
@@ -568,32 +568,32 @@ for (i in 1:8) {
 # ar_9 <- array(data = r9, dim = c(8, 128, 128))
 # t9 <- cbind(ar_9[1,,], ar_9[2,,], ar_9[3,,], ar_9[4,,], ar_9[5,,], ar_9[6,,],ar_9[7,,], ar_9[8,,])
 
-target_area_reconstructed <- rbind(t1,t2,t3,t4,t5,t6,t7,t8,t9)
-plot(as.raster(target_area_reconstructed))
-
-
-# threshold image based on pixel value
-threshold_pixels <- function(data){
-  
-  container <- array(dim = c(dim(data)[1], dim(data)[2]))
-  
-  for(i in 1:(dim(data)[1])){
-    for(j in 1:(dim(data)[2])){
-    
-      if(data[i, j] > 0.5){
-        container[i, j] <- 1
-      }
-      else {
-        container[i, j] <- 0
-      }
-  }
-  }
-  return(container)
-}
-
-
-pixel_based_segmentation <- threshold_pixels(target_area_reconstructed)
-plot(as.raster(pixel_based_segmentation))
+# target_area_reconstructed <- rbind(t1,t2,t3,t4,t5,t6,t7,t8,t9)
+# plot(as.raster(target_area_reconstructed))
+# 
+# 
+# # threshold image based on pixel value
+# threshold_pixels <- function(data){
+#   
+#   container <- array(dim = c(dim(data)[1], dim(data)[2]))
+#   
+#   for(i in 1:(dim(data)[1])){
+#     for(j in 1:(dim(data)[2])){
+#     
+#       if(data[i, j] > 0.5){
+#         container[i, j] <- 1
+#       }
+#       else {
+#         container[i, j] <- 0
+#       }
+#   }
+#   }
+#   return(container)
+# }
+# 
+# 
+# pixel_based_segmentation <- threshold_pixels(target_area_reconstructed)
+# plot(as.raster(pixel_based_segmentation))
 ```
 
 ```{r vgg16_test_setup}
