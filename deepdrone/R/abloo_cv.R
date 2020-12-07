@@ -9,6 +9,8 @@
 #'
 #' @examples \dontrun{cross_validation_tensor_selection <- abloo_cv(train_tile_tensors, train_mask_tensors, 3)}
 abloo_cv <- function(tile_tensors, mask_tensors, index){
+  
+  # utilize look up table for tensor organization
   if(index == 1){
     these.tiles <- k_concatenate(c(tile_tensors[[2]],
                                    tile_tensors[[3]],
@@ -79,7 +81,17 @@ abloo_cv <- function(tile_tensors, mask_tensors, index){
   return(remainder)
 }
 
-#' Avaluate model quality using area-based leave one out cross validation
+#####
+# Dynamic selection:
+# for(i in 1:6){
+
+# concatenate tiles and masks of training areas, leaving out test area
+#     these.tiles <- k_concatenate(tile_tensors[c(-i)], 1)
+#     these.masks <- k_concatenate(mask_tensors[c(-i)], 1)
+#     }  
+#####
+
+#' Evaluate model quality using area-based leave one out cross validation
 #'
 #' @param evaluations List. Contains evaluations gathered in area-based leave one out cross validation training
 #'

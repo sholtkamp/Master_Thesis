@@ -25,11 +25,11 @@ cols <- brewer.pal(11, "RdYlGn")
 #channels <- c(1, 2, 3) # --> Blue Green Red
 #channels <- c(1, 2, 4) # --> Blue Green NIR
 #channels <- c(1, 2, 5) # --> Blue Green RE  
-#channels <- c(2, 4, 5) # --> Green NIR RedEdge
-channels <- c(4, 5, 6)
-
+channels <- c(2, 4, 5) # --> Green NIR RedEdge
+#channels <- c(4, 5, 6) # --> NIR RE DEM
 #channels <- c(1, 2, 3, 4, 5) # --> Full spectral
-# channels <- c(1, 2, 3, 4, 5, 6)
+#channels <- c(1, 2, 3, 4, 5, 6) #  --> Full thesis data
+
 # data[[1]][,,,6] <- data[[1]][,,,6] / max(data[[1]][,,,6])
 # data[[3]][,,,6] <- data[[3]][,,,6] / max(data[[3]][,,,6])
 # data[[5]][,,,6] <- data[[5]][,,,6] / max(data[[5]][,,,6])
@@ -45,8 +45,8 @@ target_extent <- extent(480321.8, 480396.5, 5796794, 5796879)
 
 # define base directory and project name used for folders and result file organisation
 base_dir <- "C:/Users/Basti/Desktop/"
-model_name <- "bin"
-project_name <- "bin"
+model_name <- "placeholder"
+project_name <- "placeholder"
 dir.create(paste0(base_dir, project_name))
 
 #---------------------------------------------------------------------------------------------------------------
@@ -193,7 +193,7 @@ early_stopping_call_soft = callback_early_stopping(
 
 ```
 
-```{r model, include = FALSE}
+```{r model_initialization}
 ############################
 ##### INITIALIZE MODEL #####
 ############################
@@ -246,16 +246,24 @@ early_stopping_call_soft = callback_early_stopping(
 # currently_used_es_call <- early_stopping_call_soft
 # currently_used_epochs <- 100
 
+# Setup Final
+# model <- build_unet_kernel_7()
+# currently_used_loss <- seg_loss
+# currently_used_optimizer <- optimizer_sgd(lr = 0.002)
+# currently_used_metrics <- list(dice, IoU)
+# currently_used_es_call <- early_stopping_call_soft
+# currently_used_epochs <- 100
+
 # Setup Abstract
-model <- build_unet_kernel_7()
-currently_used_loss <- seg_loss
-currently_used_optimizer <- optimizer_sgd(lr = 0.002)
-currently_used_metrics <- list(dice, IoU, "binary_accuracy")
-currently_used_es_call <- early_stopping_call_soft
-currently_used_epochs <- 100
+# model <- build_unet_kernel_7()
+# currently_used_loss <- seg_loss
+# currently_used_optimizer <- optimizer_sgd(lr = 0.002)
+# currently_used_metrics <- list(dice, IoU, "binary_accuracy")
+# currently_used_es_call <- early_stopping_call_soft
+# currently_used_epochs <- 100
 ```
 
-```{r}
+```{r_standard_training}
  
 # gather model
 full_model <- clone_model(model)
@@ -370,92 +378,10 @@ save(histories, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", mode
 save(abloo_cv_eval, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name,"_loocv.RData"))
 ```
 
-
-```{r visualize_activations}
-# Implemented as shown in Chollet and Allaire (2018): Deep Learning with R
-
-img_tensor <- array_reshape(data[[1]][5, , , c(3,2,1)], c(1, 128, 128, 3))
-img_tensor <- img_tensor / max(img_tensor)
-plot(as.raster(img_tensor[1,,,]))
-activations <- full_model %>% predict(img_tensor)
-
-layer_outputs <- lapply(model$layers[1:8], function(layer) layer$output)
-activation_model <- keras_model(inputs = model$input, outputs = layer_outputs)
-
-activations <- activation_model %>% predict(img_tensor)
-
-
-plot_channel <- function(channel) {
- rotate <- function(x) t(apply(x, 2, rev))
- image(rotate(channel), axes = FALSE, asp = 1, col = cols)
-}
-
-plot_channel(activations[[layer]][ , , , 1])
-
-
-
-
-
-
-image_size <- 32
-images_per_row <- 12
-
-for (i in 1:8) {
-  layer_activation <- activations[[i]]
-  layer_name <- model$layers[[i]]$name
-  n_features <- dim(layer_activation)[[4]]
-  n_cols <- n_features %/% images_per_row
-  png(paste0("C:/Users/Basti/Desktop/", i, "_", layer_name, ".png"),
-      width = image_size * images_per_row,
-      height = image_size * n_cols)
-  op <- par(mfrow = c(n_cols, images_per_row), mai = rep_len(0.02, 4))
-  for (col in 0:(n_cols-1)) {
-    for (row in 0:(images_per_row-1)) {
-      channel_image <- layer_activation[1,,,(col*images_per_row) + row + 1]
-      plot_channel(channel_image)
-    }
-  }
-  par(op)
-  dev.off()
-}
-```
-
-```{r visualze_filters}
-layer_name <- "down_6"
-filter_index <- 1
-
-generate_pattern <- function(layer_name, filter_index, size = 150) {
- layer_output <- model$get_layer(layer_name)$output
- loss <- K$mean(layer_output[,,,filter_index])
- grads <- K$gradients(loss, model$input)[[1]]
- grads <- grads / (K$sqrt(K$mean(K$square(grads))) + 1e-5)
- iterate <- K$`function`(list(model$input), list(loss, grads))
- input_img_data <-
- array(runif(size * size * 3), dim = c(1, size, size, 3)) * 20 + 128
- step <- 1
- for (i in 1:40) {
- c(loss_value, grads_value) %<-% iterate(list(input_img_data))
- input_img_data <- input_img_data + (grads_value * step)
- }
- img <- input_img_data[1,,,]
- deprocess_image(img)
-}
-
-library(grid)
-grid.raster(generate_pattern(layer_name, 1))
-
-```
-
-```{r heatmap}
-not applicable
-```
-
-```{r predict}
+```{r predict_classes}
 
 # applay trained model to predict classes in target area
 predicted_classes <- full_model %>% predict(data[[5]][ , , , channels])
-
-
 
 # merge predictions tiles
 predictions_merged <- merge_tiles(predicted_classes[ , , , 1], columns = 8, overlap = FALSE)
@@ -497,7 +423,7 @@ writeRaster(prediction_raster, file = paste0("C:/Users/Basti/Desktop/", project_
 writeRaster(binary_prediction_raster, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_mask_raster.tif"), format="GTiff", overwrite = TRUE)
 ```
 
-```{r}
+```{r export_plots}
 png(paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_probs.png"), width=525, height=550, pointsize = 20)
 plot(prediction_raster, 
              main = "Class Probabilities of Target Area", 
@@ -517,87 +443,136 @@ plot(binary_prediction_raster, main = "Class Mask for Target Area", xlab = "Long
 dev.off()
 ```
 
-par(mfrow=c(1,2))
-plot(prediction_raster, 
-             main = "Class Probabilities for Target Area", 
-             xlab = "Longitude [°E]", 
-             ylab = "Lattitude [°N]", 
-             col = cols,
-             breaks = c(1.0, 0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65, 0.60, 0.55, 0.50)
-)
-plot(binary_prediction_raster, 
-     main = "Vegetation Mask for Target Area", 
-     xlab = "Longitude [°E]", 
-     ylab = "Lattitude [°N]", 
-     col = "darkgreen", 
-     legend = FALSE)
+```{r visualize_activations}
+# Implemented as shown in Chollet and Allaire (2018): Deep Learning with R
+
+# Single activations
+img_tensor <- array_reshape(data[[1]][5, , , c(3,2,1)], c(1, 128, 128, 3))
+img_tensor <- img_tensor / max(img_tensor)
+plot(as.raster(img_tensor[1,,,]))
+activations <- full_model %>% predict(img_tensor)
+
+layer_outputs <- lapply(model$layers[1:8], function(layer) layer$output)
+activation_model <- keras_model(inputs = model$input, outputs = layer_outputs)
+
+activations <- activation_model %>% predict(img_tensor)
+
+plot_channel <- function(channel) {
+  rotate <- function(x) t(apply(x, 2, rev))
+  image(rotate(channel), axes = FALSE, asp = 1, col = cols)
+}
+
+plot_channel(activations[[layer]][ , , , 1])
 
 
 
-```{r}
+# Multiple activations
+image_size <- 32
+images_per_row <- 12
+
+for (i in 1:8) {
+  layer_activation <- activations[[i]]
+  layer_name <- model$layers[[i]]$name
+  n_features <- dim(layer_activation)[[4]]
+  n_cols <- n_features %/% images_per_row
+  
+  png(paste0("C:/Users/Basti/Desktop/", i, "_", layer_name, ".png"),
+      width = image_size * images_per_row,
+      height = image_size * n_cols)
+  
+  op <- par(mfrow = c(n_cols, images_per_row), mai = rep_len(0.02, 4))
+  
+  for (col in 0:(n_cols-1)) {
+    for (row in 0:(images_per_row-1)) {
+      channel_image <- layer_activation[1,,,(col*images_per_row) + row + 1]
+      plot_channel(channel_image)
+    }
+  }
+  
+  par(op)
+  dev.off()
+}
+```
+
+```{r visualze_filters}
+# Implemented as shown in Chollet and Allaire (2018): Deep Learning with R
+
+# This method is not functional due to errors caused by line 445 "grads <- K$gradients(loss, model$input)[[1]]"
+###########
+#
+# layer_name <- "down_6"
+# filter_index <- 1
 # 
-# reassamble_image <- function(data, columns, channel){
+# generate_pattern <- function(layer_name, filter_index, size = 150) {
+#   layer_output <- model$get_layer(layer_name)$output
+#   loss <- K$mean(layer_output[,,,filter_index])
+#   grads <- K$gradients(loss, model$input)[[1]]
+#   grads <- grads / (K$sqrt(K$mean(K$square(grads))) + 1e-5)
+#   iterate <- K$`function`(list(model$input), list(loss, grads))
+#   input_img_data <- array(runif(size * size * 3), dim = c(1, size, size, 3)) * 20 + 128
+#   step <- 1
 #   
-#   container <- list()
-#   test <- array(dim = c(dim(data)[1], (columns * dim(data)[1])))
-# 
-#   
-#   for(i in 1:columns){
-#     
-#     ele <- array(data = data[((i * columns) - (columns - 1)), , , channel], dim = c(dim(data)[1], dim(data)[2]))
-#     
-#     test[ , ] <- ele
+#   for (i in 1:40) {
+#     c(loss_value, grads_value) %<-% iterate(list(input_img_data))
+#     input_img_data <- input_img_data + (grads_value * step)
 #   }
 #   
-# 
-#   
-#   return(test)
+#   img <- input_img_data[1,,,]
+#   deprocess_image(img)
 # }
 # 
-# test <- reassamble_image(data[[5]], 8, 1)
-# plot(as.raster(test))
+# library(grid)
+# grid.raster(generate_pattern(layer_name, 1))
+#
+###########
 
-r1 <- cbind(data[[5]][1:8, , , 5])
-r2 <- cbind(data[[5]][9:16, , , 5])
-r3 <- cbind(data[[5]][17:24, , , 5])
-r4 <- cbind(data[[5]][25:32, , , 5])
-r5 <- cbind(data[[5]][33:40, , , 5])
-r6 <- cbind(data[[5]][41:48, , , 5])
-r7 <- cbind(data[[5]][49:56, , , 5])
-r8 <- cbind(data[[5]][57:64, , , 5])
-r9 <- cbind(data[[5]][65:72, , , 5])
+```
+
+```{r rudimentary_pixel_based_approach}
+
+# reassamble target area into single image 
+# r1 <- cbind(data[[5]][1:8, , , 5])
+# r2 <- cbind(data[[5]][9:16, , , 5])
+# r3 <- cbind(data[[5]][17:24, , , 5])
+# r4 <- cbind(data[[5]][25:32, , , 5])
+# r5 <- cbind(data[[5]][33:40, , , 5])
+# r6 <- cbind(data[[5]][41:48, , , 5])
+# r7 <- cbind(data[[5]][49:56, , , 5])
+# r8 <- cbind(data[[5]][57:64, , , 5])
+# r9 <- cbind(data[[5]][65:72, , , 5])
+# 
+# ar_1 <- array(data = r1, dim = c(8, 128, 128))
+# t1 <- cbind(ar_1[1,,], ar_1[2,,], ar_1[3,,], ar_1[4,,], ar_1[5,,], ar_1[6,,],ar_1[7,,], ar_1[8,,])
+# 
+# ar_2 <- array(data = r2, dim = c(8, 128, 128))
+# t2 <- cbind(ar_2[1,,], ar_2[2,,], ar_2[3,,], ar_2[4,,], ar_2[5,,], ar_2[6,,],ar_2[7,,], ar_2[8,,])
+# 
+# ar_3 <- array(data = r3, dim = c(8, 128, 128))
+# t3 <- cbind(ar_3[1,,], ar_3[2,,], ar_3[3,,], ar_3[4,,], ar_3[5,,], ar_3[6,,],ar_3[7,,], ar_3[8,,])
+# 
+# ar_4 <- array(data = r4, dim = c(8, 128, 128))
+# t4 <- cbind(ar_4[1,,], ar_4[2,,], ar_4[3,,], ar_4[4,,], ar_4[5,,], ar_4[6,,],ar_4[7,,], ar_4[8,,])
+# 
+# ar_5 <- array(data = r5, dim = c(8, 128, 128))
+# t5 <- cbind(ar_5[1,,], ar_5[2,,], ar_5[3,,], ar_5[4,,], ar_5[5,,], ar_5[6,,],ar_5[7,,], ar_5[8,,])
+# 
+# ar_6 <- array(data = r6, dim = c(8, 128, 128))
+# t6 <- cbind(ar_6[1,,], ar_6[2,,], ar_6[3,,], ar_6[4,,], ar_6[5,,], ar_6[6,,],ar_6[7,,], ar_6[8,,])
+# 
+# ar_7 <- array(data = r7, dim = c(8, 128, 128))
+# t7 <- cbind(ar_7[1,,], ar_7[2,,], ar_7[3,,], ar_7[4,,], ar_7[5,,], ar_7[6,,],ar_7[7,,], ar_7[8,,])
+# 
+# ar_8 <- array(data = r8, dim = c(8, 128, 128))
+# t8 <- cbind(ar_8[1,,], ar_8[2,,], ar_8[3,,], ar_8[4,,], ar_8[5,,], ar_8[6,,],ar_8[7,,], ar_8[8,,])
+# 
+# ar_9 <- array(data = r9, dim = c(8, 128, 128))
+# t9 <- cbind(ar_9[1,,], ar_9[2,,], ar_9[3,,], ar_9[4,,], ar_9[5,,], ar_9[6,,],ar_9[7,,], ar_9[8,,])
+
+target_area_reconstructed <- rbind(t1,t2,t3,t4,t5,t6,t7,t8,t9)
+plot(as.raster(target_area_reconstructed))
 
 
-ar_1 <- array(data = r1, dim = c(8, 128, 128))
-t1 <- cbind(ar_1[1,,], ar_1[2,,], ar_1[3,,], ar_1[4,,], ar_1[5,,], ar_1[6,,],ar_1[7,,], ar_1[8,,])
-
-ar_2 <- array(data = r2, dim = c(8, 128, 128))
-t2 <- cbind(ar_2[1,,], ar_2[2,,], ar_2[3,,], ar_2[4,,], ar_2[5,,], ar_2[6,,],ar_2[7,,], ar_2[8,,])
-
-ar_3 <- array(data = r3, dim = c(8, 128, 128))
-t3 <- cbind(ar_3[1,,], ar_3[2,,], ar_3[3,,], ar_3[4,,], ar_3[5,,], ar_3[6,,],ar_3[7,,], ar_3[8,,])
-
-ar_4 <- array(data = r4, dim = c(8, 128, 128))
-t4 <- cbind(ar_4[1,,], ar_4[2,,], ar_4[3,,], ar_4[4,,], ar_4[5,,], ar_4[6,,],ar_4[7,,], ar_4[8,,])
-
-ar_5 <- array(data = r5, dim = c(8, 128, 128))
-t5 <- cbind(ar_5[1,,], ar_5[2,,], ar_5[3,,], ar_5[4,,], ar_5[5,,], ar_5[6,,],ar_5[7,,], ar_5[8,,])
-
-ar_6 <- array(data = r6, dim = c(8, 128, 128))
-t6 <- cbind(ar_6[1,,], ar_6[2,,], ar_6[3,,], ar_6[4,,], ar_6[5,,], ar_6[6,,],ar_6[7,,], ar_6[8,,])
-
-ar_7 <- array(data = r7, dim = c(8, 128, 128))
-t7 <- cbind(ar_7[1,,], ar_7[2,,], ar_7[3,,], ar_7[4,,], ar_7[5,,], ar_7[6,,],ar_7[7,,], ar_7[8,,])
-
-ar_8 <- array(data = r8, dim = c(8, 128, 128))
-t8 <- cbind(ar_8[1,,], ar_8[2,,], ar_8[3,,], ar_8[4,,], ar_8[5,,], ar_8[6,,],ar_8[7,,], ar_8[8,,])
-
-ar_9 <- array(data = r9, dim = c(8, 128, 128))
-t9 <- cbind(ar_9[1,,], ar_9[2,,], ar_9[3,,], ar_9[4,,], ar_9[5,,], ar_9[6,,],ar_9[7,,], ar_9[8,,])
-
-temp <- rbind(t1,t2,t3,t4,t5,t6,t7,t8,t9)
-plot(as.raster(temp))
-
+# threshold image based on pixel value
 threshold_pixels <- function(data){
   
   container <- array(dim = c(dim(data)[1], dim(data)[2]))
@@ -616,8 +591,182 @@ threshold_pixels <- function(data){
   return(container)
 }
 
-test <- threshold_pixels(temp)
-plot(as.raster(test))
+
+pixel_based_segmentation <- threshold_pixels(target_area_reconstructed)
+plot(as.raster(pixel_based_segmentation))
+```
+
+```{r vgg16_test_setup}
+# preprocess data to tensofrflow conform format
+# vgg_data_1 <- imagenet_preprocess_input(data[[1]][,,,1:5], data_format = NULL, mode = "tf")
+# vgg_data_2 <- imagenet_preprocess_input(data[[2]], data_format = NULL, mode = "tf")
+# vgg_data_3 <- imagenet_preprocess_input(data[[3]][,,,1:5], data_format = NULL, mode = "tf")
+# vgg_data_4 <- imagenet_preprocess_input(data[[4]], data_format = NULL, mode = "tf")
+# 
+# t1 <- k_constant(vgg_data_1)[,,,1:3]
+# t2 <- k_constant(vgg_data_3)[,,,1:3]
+# tiles <- k_concatenate(list(t1, t2), 1)
+# 
+# m1 <- k_constant(to_categorical(vgg_data_2, num_classes = 2))
+# m2 <- k_constant(to_categorical(vgg_data_4, num_classes = 2))
+# masks <- k_concatenate(list(m1, m2), 1)
+# 
+# vgg_target <- imagenet_preprocess_input(data[[5]][,,,1:3], data_format = NULL, mode = "tf")
+
+
+# # prepare input layer for VGG16
+# inputs <- layer_input(name = "input_1", shape = c(128, 128, 3))
+# 
+# 
+# # build VGG16 model
+# build_unet_vgg16 <- function(input_shape = c(128, 128, 3), num_classes = 2){
+#   
+#   vgg16_model <- application_vgg16(weights = "imagenet", include_top = FALSE, input_shape = input_shape, input_tensor = inputs)
+#   
+#   #---Downsampling------------------------------------------------------------------------------
+#   
+#   down_1 <- vgg16_model$layers[[4]]$output
+#   down_2 <- vgg16_model$layers[[7]]$output
+#   down_3 <- vgg16_model$layers[[11]]$output
+#   down_4 <- vgg16_model$layers[[15]]$output
+#   #freeze_weights(c(down_1, down_2, down_3, down_4))
+#   
+#   #---Center-----------------------------------------------------------------------------------
+#   center <- down_4 %>%
+#     layer_dropout(rate = 0.5) %>%
+#     layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "center_1", padding = "same") %>%
+#     layer_activation("relu") %>%
+#     layer_conv_2d(filters = 1024, kernel_size = c(3, 3), name = "center_2", padding = "same") %>%
+#     layer_activation("relu")
+#   
+#   #---Upsampling--------------------------------------------------------------------------------
+#   
+#   up4 <- center %>%
+#     {layer_concatenate(inputs = list(down_4, .), axis = 3)} %>%
+#     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "up_8", padding = "same") %>%
+#     layer_activation("relu") %>%
+#     layer_conv_2d(filters = 512, kernel_size = c(3, 3), name = "up_7", padding = "same") %>%
+#     layer_activation("relu")
+#   
+#   up3 <- up4 %>%
+#     layer_upsampling_2d(size = c(2, 2)) %>%
+#     {layer_concatenate(inputs = list(down_3, .), axis = 3)} %>%
+#     layer_conv_2d(filters = 256, kernel_size = c(3, 3), name = "up_6", padding = "same") %>%
+#     layer_activation("relu") %>%
+#     layer_conv_2d(filters = 256, kernel_size = c(3, 3), name = "up_5", padding = "same") %>%
+#     layer_activation("relu") 
+#   
+#   up2 <- up3 %>%
+#     layer_upsampling_2d(size = c(2, 2)) %>%
+#     {layer_concatenate(inputs = list(down_2, .), axis = 3)} %>%
+#     layer_conv_2d(filters = 128, kernel_size = c(3, 3), name = "up_4", padding = "same") %>%
+#     layer_activation("relu") %>%
+#     layer_conv_2d(filters = 128, kernel_size = c(3, 3), name = "up_3", padding = "same") %>%
+#     layer_activation("relu") 
+#   
+#   up1 <- up2 %>%
+#     layer_upsampling_2d(size = c(2, 2)) %>%
+#     {layer_concatenate(inputs = list(down_1, .), axis = 3)} %>%
+#     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "up_2", padding = "same") %>%
+#     layer_activation("relu") %>%
+#     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "up_1", padding = "same") %>%
+#     layer_activation("relu") 
+#   
+#   add_up <- up1 %>%
+#     layer_upsampling_2d(size = c(2, 2)) %>%
+#     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "up_2_1", padding = "same") %>%
+#     layer_activation("relu") %>%
+#     layer_conv_2d(filters = 64, kernel_size = c(3, 3), name = "up_1_1", padding = "same") %>%
+#     layer_activation("relu") 
+#   
+#   #---Classification/Output---------------------------------------------------------------------
+#   classify <- layer_conv_2d(add_up, filters = num_classes, kernel_size = c(1, 1), activation = "sigmoid")
+#   
+#   # Build specified model and assign it to variable
+#   model <- keras_model(
+#     inputs = inputs,
+#     outputs = classify
+#   )
+#   
+#   return(model)
+# }
+# 
+# 
+# # instantiate VGG16 model
+# test_model <- build_unet_vgg16()
+# 
+# 
+# # compile VGG 16 model
+# test_model %>% compile(
+#   loss = binary_crossentropy, 
+#   optimizer = optimizer_sgd(lr = 0.001),
+#   metrics = c(dice, IoU)
+# )
+# 
+# 
+# 
+# # fit cloned model to training data
+# full_history <- test_model %>%
+#   fit_generator(
+#     epochs = 100,
+#     steps_per_epoch = dim(data[[1]])[1] / 16,
+#     callbacks = early_stopping_call_soft,
+#     
+#     generator = flow_images_from_data(
+#       batch_size = 16,
+#       tiles,
+#       masks,
+#       image_datagen,
+#       subset = "training"
+#     ),
+#     
+#     validation_data = flow_images_from_data(
+#       batch_size = 16,
+#       tiles,
+#       masks,
+#       image_datagen,
+#       subset = "validation"
+#     )
+#   )
+# 
+# 
+# # evaluate VGG16 model
+# full_evaluation = evaluate(test_model, test_tile_tensor[[1]], test_mask_tensor[[1]])
+# 
+# 
+# # predict class probabilities using VGG16 model
+# temp <- test_model %>% predict(vgg_target)
+# 
+# 
+# # merge predictions tiles
+# predictions_merged <- merge_tiles(temp[ , , , 2], columns = 8, overlap = FALSE)
+# 
+# # use target area information to georeference predictions
+# prediction_raster <- rasterize_predictions(target_extent, target_crs_pre, target_crs_post, predictions_merged)
+# 
+# # plot results of prediction
+# plot(prediction_raster, 
+#      main = "Class Probabilities for Target Area", 
+#      xlab = "Longitude [°E]", 
+#      ylab = "Lattitude [°N]", 
+#      col = cols,
+#      breaks = c(1.0, 0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65, 0.60, 0.55, 0.50)
+# )
+# writeRaster(prediction_raster, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_probs_raster.tif"), format="GTiff", overwrite = TRUE)
+# 
+# png(paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_probs.png"), width=525, height=550, pointsize = 20)
+# plot(prediction_raster, 
+#      main = "Class Probabilities of Target Area", 
+#      xlab = "Longitude [°E]", 
+#      ylab = "Lattitude [°N]", 
+#      
+#      col = cols, 
+#      breaks = c(1.0, 0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65, 0.60, 0.55, 0.50),
+#      
+#      par(bty="l", cex.axis= 0.75, cex.lab = 0.85)
+#      
+# )
+# dev.off()
 ```
 
 ```{r data_preprocessing}
