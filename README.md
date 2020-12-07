@@ -3,10 +3,7 @@
 
 
 <p>
-  <img src="target_tiny.png" width="256" height="256">
-  <figcaption>Target Area</figcaption>
+  <img src="current_status.png" width="256" height="256">
+  <figcaption>Current Status of detection accuracy</figcaption>
 </p>
 
-Current Status of detection accuracy:
-
-![Current Status](current_status.png)
