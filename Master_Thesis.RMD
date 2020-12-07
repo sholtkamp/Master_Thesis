@@ -20,15 +20,23 @@ library(RColorBrewer)
 
 # define colors for plotting
 cols <- brewer.pal(11, "RdYlGn")
-cols2 <- rev(brewer.pal(5, "RdYlGn"))
 
 # define channels used 
-# channels <- c(1, 2, 3) # --> Blue Green Red
-channels <- c(2, 4, 5) # --> Green NIR RedEdge
+#channels <- c(1, 2, 3) # --> Blue Green Red
+#channels <- c(1, 2, 4) # --> Blue Green NIR
+#channels <- c(1, 2, 5) # --> Blue Green RE  
+#channels <- c(2, 4, 5) # --> Green NIR RedEdge
+channels <- c(4, 5, 6)
+
+#channels <- c(1, 2, 3, 4, 5) # --> Full spectral
+# channels <- c(1, 2, 3, 4, 5, 6)
+# data[[1]][,,,6] <- data[[1]][,,,6] / max(data[[1]][,,,6])
+# data[[3]][,,,6] <- data[[3]][,,,6] / max(data[[3]][,,,6])
+# data[[5]][,,,6] <- data[[5]][,,,6] / max(data[[5]][,,,6])
 
 # save leading IDs of areas for tensor building
-tile_leads <- c(1, 316, 328, 581, 617, 632)
-mask_leads <- c(1, 81)
+train_leads <- c(1, 316, 328, 581, 617, 632)
+test_leads <- c(1, 81)
 
 # attributes of target area to build referenced raster
 target_crs_pre <- crs("+proj=utm +zone=32 +datum=WGS84 +init=EPSG:32632 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0")
@@ -37,8 +45,8 @@ target_extent <- extent(480321.8, 480396.5, 5796794, 5796879)
 
 # define base directory and project name used for folders and result file organisation
 base_dir <- "C:/Users/Basti/Desktop/"
-model_name <- "model"
-project_name <- "test"
+model_name <- "bin"
+project_name <- "bin"
 dir.create(paste0(base_dir, project_name))
 
 #---------------------------------------------------------------------------------------------------------------
@@ -54,8 +62,8 @@ K <- backend()
 load("F:/Master_Thesis/data/split_data.RData")
 
 # build tensors of data
-train_tensors <- tensorize_data(data, channels, tile_leads)
-test_tensor <- tensorize_data(data, channels, mask_leads)
+train_tensors <- tensorize_data(data, channels, train_leads)
+test_tensor <- tensorize_data(data, channels, test_leads)
 
 # organize tensors as lists
 train_tile_tensors <- train_tensors[[1]]
@@ -134,7 +142,7 @@ seg_loss <- function(y_true, y_pred) {
   dice_loss <-  (1 - dice(y_true, y_pred))
   IoU_loss <- (1 - IoU(y_true, y_pred))
   
-  result <-  loss_binary_crossentropy(y_true, y_pred) + k_mean(dice_loss + IoU_loss)
+  result <- ((loss_binary_crossentropy(y_true, y_pred) + k_mean(dice_loss + IoU_loss)) / 2)
   
   return(result)
 }
@@ -152,12 +160,22 @@ image_datagen <- image_data_generator(
   height_shift_range = 0.2,
   horizontal_flip = TRUE,
   vertical_flip = TRUE,
+  #zoom_range = c(0.5, 1.5),
+  #brightness_range = c(0.2, 1.0),
   
   validation_split = 0.2
 )
 
+image_datagen_nosplit <- image_data_generator(
+  rotation_range = 180,
+  width_shift_range = 0.2,
+  height_shift_range = 0.2,
+  horizontal_flip = TRUE,
+  vertical_flip = TRUE
+)
+
 # define parameters for early stopping
-early_stopping_call = callback_early_stopping(
+early_stopping_call_harsh = callback_early_stopping(
                         monitor = "val_loss",
                         mode = "min",
                         min_delta = 0.01,
@@ -165,29 +183,14 @@ early_stopping_call = callback_early_stopping(
                         restore_best_weights = TRUE
 )
 
-```
+early_stopping_call_soft = callback_early_stopping(
+                        monitor = "val_loss",
+                        mode = "min",
+                        min_delta = 0.01,
+                        patience = 10,
+                        restore_best_weights = TRUE
+)
 
-```{r data_preprocessing}
-
-# If data has not been prepared and stored in an .RData file, data can be pre-processed using the following pipeline:
-
-# create tiles from image data and binary mask data
-# create_subsets("C:/User/Desktop/Raster.tif", dimensions = c(128, 128), fixed = TRUE, "C:/User/Desktop/Raster_Tiles/", .tif")
-
-# load tile data
-# data <- load_project_data(tile_path = "F:/Master_Thesis/data/tiles/", mask_path = "F:/Master_Thesis/data/masks/", dimensions = c(128, 128), ch_t = 6, ch_m = 1, ".tif")
-
-# split data into training and validation data
-# data <- split_data(data, 0.8)
-
-# add NDVI to data if desired
-# data[[1]] <- add_ndvi(data[[1]], 3, 4) # add NDVI to training area data
-# data[[3]] <- add_ndvi(data[[3]], 3, 4) # add NDVI to test area data
-# data[[5]] <- add_ndvi(data[[3]], 3, 4) # add NDVI to target area data
-
-# balance dataset if desired
-# pixel_balanced_data <- balance_data("pixel", data, 0.5)
-# image_balanced_data <- balance_data("image", data[[1]], data[[2]], 0.5)
 ```
 
 ```{r model, include = FALSE}
@@ -195,10 +198,108 @@ early_stopping_call = callback_early_stopping(
 ##### INITIALIZE MODEL #####
 ############################
 
-model <- build_unet_sigmoid()
+# Setup 1
+# model <- build_unet_original()
+# currently_used_loss <- loss_binary_crossentropy
+# currently_used_optimizer <- optimizer_sgd(lr = 0.0001, momentum = 0.99)
+# currently_used_metrics <- list(dice, IoU)
+# currently_used_es_call <- NULL
+# currently_used_epochs <- 1000
+
+# Setup 2
+# model <- build_unet_original()
+# currently_used_loss <- loss_binary_crossentropy
+# currently_used_optimizer <- optimizer_sgd(lr = 0.0001, momentum = 0.99)
+# currently_used_metrics <- list(dice, IoU)
+# currently_used_es_call <- early_stopping_call_soft
+# currently_used_epochs <- 250
+
+# Setup 3
+# model <- build_unet_original()
+# currently_used_loss <- loss_binary_crossentropy
+# currently_used_optimizer <- optimizer_sgd(lr = 0.001)
+# currently_used_metrics <- list(dice, IoU)
+# currently_used_es_call <- early_stopping_call_soft
+# currently_used_epochs <- 100
+
+# Setup 4
+# model <- build_unet_sigmoid()
+# currently_used_loss <- loss_binary_crossentropy
+# currently_used_optimizer <- optimizer_sgd(lr = 0.002)
+# currently_used_metrics <- list(dice, IoU)
+# currently_used_es_call <- early_stopping_call_soft
+# currently_used_epochs <- 100
+
+# Setup 5
+# model <- build_unet_sigmoid()
+# currently_used_loss <- seg_loss
+# currently_used_optimizer <- optimizer_sgd(lr = 0.002)
+# currently_used_metrics <- list(dice, IoU)
+# currently_used_es_call <- early_stopping_call_soft
+# currently_used_epochs <- 100
+
+# Setup 6
+# model <- build_unet_spatial_dropout()
+# currently_used_loss <- seg_loss
+# currently_used_optimizer <- optimizer_sgd(lr = 0.002)
+# currently_used_metrics <- list(dice, IoU)
+# currently_used_es_call <- early_stopping_call_soft
+# currently_used_epochs <- 100
+
+# Setup Abstract
+model <- build_unet_kernel_7()
 currently_used_loss <- seg_loss
-currently_used_optimizer <- optimizer_sgd(lr = 0.001, decay = 0.25/100)
-currently_used_metrics <- list(dice, IoU, metric_binary_accuracy)
+currently_used_optimizer <- optimizer_sgd(lr = 0.002)
+currently_used_metrics <- list(dice, IoU, "binary_accuracy")
+currently_used_es_call <- early_stopping_call_soft
+currently_used_epochs <- 100
+```
+
+```{r}
+ 
+# gather model
+full_model <- clone_model(model)
+
+# compile model
+full_model %>% compile(
+                  loss = currently_used_loss,
+                  optimizer = currently_used_optimizer,
+                  metrics = currently_used_metrics
+                  )
+
+
+# fit cloned model to training data
+full_history <- full_model %>%
+  fit_generator(
+  epochs = currently_used_epochs,
+  steps_per_epoch = dim(data[[1]])[1] / 16,
+  callbacks = currently_used_es_call,
+
+  generator = flow_images_from_data(
+    batch_size = 16,
+    full_train_tile_tensor,
+    full_train_mask_tensor,
+    image_datagen,
+    subset = "training"
+    ),
+
+  validation_data = flow_images_from_data(
+    batch_size = 16,
+    full_train_tile_tensor,
+    full_train_mask_tensor,
+    image_datagen,
+    subset = "validation"
+    )
+  )
+
+# evaluate model on separate evaluation area 
+full_evaluation = evaluate(full_model, test_tile_tensor[[1]], test_mask_tensor[[1]])
+
+# save results
+save(full_evaluation, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_full_evals.RData"))
+save(full_history, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_full_histos.RData"))
+save_model_hdf5(full_model, filepath = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, ".h5"), overwrite = TRUE)
+#temp <- load_model_hdf5(filepath = "C:/Users/Basti/Desktop/kernel/kernel.h5", custom_object = c("dice" = dice, "IoU" = IoU, "currently_used_loss" = seg_loss))
 ```
 
 ```{r spatial_loocv}
@@ -230,22 +331,22 @@ for(i in 1:5){
   # fit cloned model to selected training data
   this.history <- this.model %>%
     fit_generator(
-      epochs = 100,
+      epochs = currently_used_epochs,
       steps_per_epoch = dim(these.tiles[[1]])[1] / 16,
-      callbacks = early_stopping_call,
+      callbacks = currently_used_es_call,
 
       generator = flow_images_from_data(
         batch_size = 16,
         these.tiles[[1]],
         these.masks[[1]],
-        image_datagen
+        image_datagen_nosplit
         ),
 
       validation_data = flow_images_from_data(
         batch_size = 16,
         train_tile_tensors[[i]],
         train_mask_tensors[[i]],
-        image_datagen
+        image_datagen_nosplit
         )
     )
   
@@ -269,50 +370,84 @@ save(histories, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", mode
 save(abloo_cv_eval, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name,"_loocv.RData"))
 ```
 
-```{r}
- 
-# gather model
-full_model <- clone_model(model)
 
-# compile model
-full_model %>% compile(
-                  loss = currently_used_loss,
-                  optimizer = currently_used_optimizer,
-                  metrics = currently_used_metrics
-                  )
+```{r visualize_activations}
+# Implemented as shown in Chollet and Allaire (2018): Deep Learning with R
+
+img_tensor <- array_reshape(data[[1]][5, , , c(3,2,1)], c(1, 128, 128, 3))
+img_tensor <- img_tensor / max(img_tensor)
+plot(as.raster(img_tensor[1,,,]))
+activations <- full_model %>% predict(img_tensor)
+
+layer_outputs <- lapply(model$layers[1:8], function(layer) layer$output)
+activation_model <- keras_model(inputs = model$input, outputs = layer_outputs)
+
+activations <- activation_model %>% predict(img_tensor)
 
 
-# fit cloned model to training data
-full_history <- full_model %>%
-  fit_generator(
-  epochs = 100,
-  steps_per_epoch = dim(data[[1]])[1] / 16,
-  callbacks = early_stopping_call,
+plot_channel <- function(channel) {
+ rotate <- function(x) t(apply(x, 2, rev))
+ image(rotate(channel), axes = FALSE, asp = 1, col = cols)
+}
 
-  generator = flow_images_from_data(
-    batch_size = 16,
-    full_train_tile_tensor,
-    full_train_mask_tensor,
-    image_datagen,
-    subset = "training"
-    ),
+plot_channel(activations[[layer]][ , , , 1])
 
-  validation_data = flow_images_from_data(
-    batch_size = 16,
-    full_train_tile_tensor,
-    full_train_mask_tensor,
-    image_datagen,
-    subset = "validation"
-    )
-  )
 
-# evaluate model on separate evaluation area 
-full_evaluation = evaluate(full_model, test_tile_tensor[[1]], test_mask_tensor[[1]])
 
-# save results
-save(full_evaluation, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_full_evals.RData"))
-save(full_history, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_full_histos.RData"))
-save_model_hdf5(full_model, filepath = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, ".h5"), overwrite = TRUE)
+
+
+
+image_size <- 32
+images_per_row <- 12
+
+for (i in 1:8) {
+  layer_activation <- activations[[i]]
+  layer_name <- model$layers[[i]]$name
+  n_features <- dim(layer_activation)[[4]]
+  n_cols <- n_features %/% images_per_row
+  png(paste0("C:/Users/Basti/Desktop/", i, "_", layer_name, ".png"),
+      width = image_size * images_per_row,
+      height = image_size * n_cols)
+  op <- par(mfrow = c(n_cols, images_per_row), mai = rep_len(0.02, 4))
+  for (col in 0:(n_cols-1)) {
+    for (row in 0:(images_per_row-1)) {
+      channel_image <- layer_activation[1,,,(col*images_per_row) + row + 1]
+      plot_channel(channel_image)
+    }
+  }
+  par(op)
+  dev.off()
+}
+```
+
+```{r visualze_filters}
+layer_name <- "down_6"
+filter_index <- 1
+
+generate_pattern <- function(layer_name, filter_index, size = 150) {
+ layer_output <- model$get_layer(layer_name)$output
+ loss <- K$mean(layer_output[,,,filter_index])
+ grads <- K$gradients(loss, model$input)[[1]]
+ grads <- grads / (K$sqrt(K$mean(K$square(grads))) + 1e-5)
+ iterate <- K$`function`(list(model$input), list(loss, grads))
+ input_img_data <-
+ array(runif(size * size * 3), dim = c(1, size, size, 3)) * 20 + 128
+ step <- 1
+ for (i in 1:40) {
+ c(loss_value, grads_value) %<-% iterate(list(input_img_data))
+ input_img_data <- input_img_data + (grads_value * step)
+ }
+ img <- input_img_data[1,,,]
+ deprocess_image(img)
+}
+
+library(grid)
+grid.raster(generate_pattern(layer_name, 1))
+
+```
+
+```{r heatmap}
+not applicable
 ```
 
 ```{r predict}
@@ -357,16 +492,15 @@ plot(binary_prediction_raster,
      legend = FALSE)
 
 
-
 # save results
 writeRaster(prediction_raster, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_probs_raster.tif"), format="GTiff", overwrite = TRUE)
 writeRaster(binary_prediction_raster, file = paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_mask_raster.tif"), format="GTiff", overwrite = TRUE)
 ```
 
 ```{r}
-png(paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "/probabilities_plot.png"), width=549, height=547, pointsize = 20)
-plot(rastered_predictions, 
-             main = "Class Probabilities for Target Area", 
+png(paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_probs.png"), width=525, height=550, pointsize = 20)
+plot(prediction_raster, 
+             main = "Class Probabilities of Target Area", 
              xlab = "Longitude [°E]", 
              ylab = "Lattitude [°N]", 
              
@@ -378,10 +512,10 @@ plot(rastered_predictions,
 )
 dev.off()
 
-png(paste0("C:/Users/Basti/Desktop/", model_name, "/class_mask_dice.png"), width=519, height=600, pointsize = 20)
-plot(t_rastered_predictions, main = "Class Mask for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = c("white", "darkgreen"), legend = FALSE)
+png(paste0("C:/Users/Basti/Desktop/", project_name, "/", model_name, "_mask.png"), width=525, height=550, pointsize = 20)
+plot(binary_prediction_raster, main = "Class Mask for Target Area", xlab = "Longitude [°E]", ylab = "Lattitude [°N]", col = c("white", "darkgreen"), legend = FALSE, par(bty="l", cex.axis= 0.75, cex.lab = 0.85))
 dev.off()
-
+```
 
 par(mfrow=c(1,2))
 plot(prediction_raster, 
@@ -399,4 +533,112 @@ plot(binary_prediction_raster,
      legend = FALSE)
 
 
+
+```{r}
+# 
+# reassamble_image <- function(data, columns, channel){
+#   
+#   container <- list()
+#   test <- array(dim = c(dim(data)[1], (columns * dim(data)[1])))
+# 
+#   
+#   for(i in 1:columns){
+#     
+#     ele <- array(data = data[((i * columns) - (columns - 1)), , , channel], dim = c(dim(data)[1], dim(data)[2]))
+#     
+#     test[ , ] <- ele
+#   }
+#   
+# 
+#   
+#   return(test)
+# }
+# 
+# test <- reassamble_image(data[[5]], 8, 1)
+# plot(as.raster(test))
+
+r1 <- cbind(data[[5]][1:8, , , 5])
+r2 <- cbind(data[[5]][9:16, , , 5])
+r3 <- cbind(data[[5]][17:24, , , 5])
+r4 <- cbind(data[[5]][25:32, , , 5])
+r5 <- cbind(data[[5]][33:40, , , 5])
+r6 <- cbind(data[[5]][41:48, , , 5])
+r7 <- cbind(data[[5]][49:56, , , 5])
+r8 <- cbind(data[[5]][57:64, , , 5])
+r9 <- cbind(data[[5]][65:72, , , 5])
+
+
+ar_1 <- array(data = r1, dim = c(8, 128, 128))
+t1 <- cbind(ar_1[1,,], ar_1[2,,], ar_1[3,,], ar_1[4,,], ar_1[5,,], ar_1[6,,],ar_1[7,,], ar_1[8,,])
+
+ar_2 <- array(data = r2, dim = c(8, 128, 128))
+t2 <- cbind(ar_2[1,,], ar_2[2,,], ar_2[3,,], ar_2[4,,], ar_2[5,,], ar_2[6,,],ar_2[7,,], ar_2[8,,])
+
+ar_3 <- array(data = r3, dim = c(8, 128, 128))
+t3 <- cbind(ar_3[1,,], ar_3[2,,], ar_3[3,,], ar_3[4,,], ar_3[5,,], ar_3[6,,],ar_3[7,,], ar_3[8,,])
+
+ar_4 <- array(data = r4, dim = c(8, 128, 128))
+t4 <- cbind(ar_4[1,,], ar_4[2,,], ar_4[3,,], ar_4[4,,], ar_4[5,,], ar_4[6,,],ar_4[7,,], ar_4[8,,])
+
+ar_5 <- array(data = r5, dim = c(8, 128, 128))
+t5 <- cbind(ar_5[1,,], ar_5[2,,], ar_5[3,,], ar_5[4,,], ar_5[5,,], ar_5[6,,],ar_5[7,,], ar_5[8,,])
+
+ar_6 <- array(data = r6, dim = c(8, 128, 128))
+t6 <- cbind(ar_6[1,,], ar_6[2,,], ar_6[3,,], ar_6[4,,], ar_6[5,,], ar_6[6,,],ar_6[7,,], ar_6[8,,])
+
+ar_7 <- array(data = r7, dim = c(8, 128, 128))
+t7 <- cbind(ar_7[1,,], ar_7[2,,], ar_7[3,,], ar_7[4,,], ar_7[5,,], ar_7[6,,],ar_7[7,,], ar_7[8,,])
+
+ar_8 <- array(data = r8, dim = c(8, 128, 128))
+t8 <- cbind(ar_8[1,,], ar_8[2,,], ar_8[3,,], ar_8[4,,], ar_8[5,,], ar_8[6,,],ar_8[7,,], ar_8[8,,])
+
+ar_9 <- array(data = r9, dim = c(8, 128, 128))
+t9 <- cbind(ar_9[1,,], ar_9[2,,], ar_9[3,,], ar_9[4,,], ar_9[5,,], ar_9[6,,],ar_9[7,,], ar_9[8,,])
+
+temp <- rbind(t1,t2,t3,t4,t5,t6,t7,t8,t9)
+plot(as.raster(temp))
+
+threshold_pixels <- function(data){
+  
+  container <- array(dim = c(dim(data)[1], dim(data)[2]))
+  
+  for(i in 1:(dim(data)[1])){
+    for(j in 1:(dim(data)[2])){
+    
+      if(data[i, j] > 0.5){
+        container[i, j] <- 1
+      }
+      else {
+        container[i, j] <- 0
+      }
+  }
+  }
+  return(container)
+}
+
+test <- threshold_pixels(temp)
+plot(as.raster(test))
+```
+
+```{r data_preprocessing}
+
+# If data has not been prepared and stored in an .RData file, data can be pre-processed using the following pipeline:
+
+# create tiles from image data and binary mask data
+# create_subsets("C:/User/Desktop/Raster.tif", dimensions = c(128, 128), fixed = TRUE, "C:/User/Desktop/Raster_Tiles/", .tif")
+
+# load tile data
+# data <- load_project_data(tile_path = "F:/Master_Thesis/data/tiles/", mask_path = "F:/Master_Thesis/data/masks/", dimensions = c(128, 128), ch_t = 6, ch_m = 1, ".tif")
+
+# split data into training and validation data
+# data <- split_data(data, 0.8)
+
+# add NDVI to data if desired
+# data[[1]] <- add_ndvi(data[[1]], 3, 4) # add NDVI to training area data
+# data[[3]] <- add_ndvi(data[[3]], 3, 4) # add NDVI to test area data
+# data[[5]] <- add_ndvi(data[[3]], 3, 4) # add NDVI to target area data
+
+# balance dataset if desired
+# pixel_balanced_data <- balance_data("pixel", data, 0.5)
+# image_balanced_data <- balance_data("image", data[[1]], data[[2]], 0.5)
 ```
